@@ -1,0 +1,113 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Now accepting beta waitlist signups
+      - heading "Stop the Pharmacy Scavenger Hunt." [level=1] [ref=e6]
+      - paragraph [ref=e7]: Calling 20 pharmacies every month isn't a medical plan—it's a second job.
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - generic [ref=e10]: →
+          - text: Track calls in one tap
+        - generic [ref=e11]:
+          - generic [ref=e12]: →
+          - text: Predict your run-out date
+        - generic [ref=e13]:
+          - generic [ref=e14]: →
+          - text: See where others find stock
+      - generic [ref=e15]:
+        - link "Join the Beta Waitlist" [ref=e16] [cursor=pointer]:
+          - /url: "#waitlist"
+        - paragraph [ref=e17]: Free for early contributors. No spam, just survival.
+    - generic [ref=e18]:
+      - generic [ref=e19]: Explore
+      - img [ref=e20]
+  - generic [ref=e23]:
+    - generic [ref=e24]:
+      - paragraph [ref=e25]: How it works
+      - heading "Everything you need to survive the shortage." [level=2] [ref=e26]
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - generic [ref=e29]:
+          - img [ref=e31]
+          - generic [ref=e33]:
+            - heading "Smart Call Tracker" [level=3] [ref=e34]
+            - paragraph [ref=e35]: Log every CVS and Walgreens you call. AI extracts the shipment day and stock status from your voice — no typing required during a stressful hunt.
+        - generic [ref=e36]:
+          - img [ref=e38]
+          - generic [ref=e40]:
+            - heading "Refill Countdown" [level=3] [ref=e41]
+            - paragraph [ref=e42]: A visual timer that tells you exactly when to start the hunt — not when it's already too late. Prompts you 5–7 days before your last pill.
+        - generic [ref=e43]:
+          - img [ref=e45]
+          - generic [ref=e47]:
+            - heading "Community Availability Map" [level=3] [ref=e48]
+            - paragraph [ref=e49]: Real-time, human-verified reports. See which strengths and manufacturers are landing in your zip code right now — before you start dialing.
+      - generic [ref=e50]:
+        - paragraph [ref=e51]: Community Availability Map — Preview
+        - generic [ref=e52]:
+          - generic [ref=e53]:
+            - generic [ref=e54]:
+              - generic [ref=e56]: LIVE
+              - generic [ref=e57]: · 02101 · Boston, MA
+            - generic [ref=e58]: Updated 4m ago
+          - generic [ref=e59]:
+            - img [ref=e60]:
+              - generic [ref=e61]: MAIN ST
+              - generic [ref=e62]: ELM AVE
+              - generic [ref=e63]: PARK RD
+              - generic [ref=e64]:
+                - generic [ref=e67]: CVS
+                - generic [ref=e68]: Stimulant · In Stock
+              - generic [ref=e69]:
+                - generic [ref=e72]: Walgreens
+                - generic [ref=e73]: Stimulant · In Stock
+              - generic [ref=e74]:
+                - generic [ref=e77]: CVS
+                - generic [ref=e78]: 30mg · Limited
+              - generic [ref=e79]:
+                - generic [ref=e82]: Rite
+                - generic [ref=e83]: Stimulant · Limited
+              - generic [ref=e84]:
+                - generic [ref=e87]: Walgreens
+                - generic [ref=e88]: Shortage Indicator
+              - generic [ref=e89]:
+                - generic [ref=e92]: Target
+                - generic [ref=e93]: Shortage Indicator
+              - generic [ref=e94]:
+                - generic [ref=e97]: Costco
+                - generic [ref=e98]: 20mg · In Stock
+              - generic [ref=e99]:
+                - generic [ref=e102]: CVS
+                - generic [ref=e103]: 30mg · Limited
+            - generic [ref=e104]:
+              - generic [ref=e105]: Stimulants
+              - generic [ref=e106]: Short-acting
+              - generic [ref=e107]: Extended
+          - generic [ref=e108]:
+            - generic [ref=e111]: In Stock
+            - generic [ref=e114]: Limited
+            - generic [ref=e117]: Low / None
+            - generic [ref=e118]: 8 pharmacies nearby
+        - paragraph [ref=e119]: "* Simulated data. Real map powered by contributor reports."
+  - generic [ref=e121]:
+    - generic [ref=e123]: Built by the community, for the community
+    - generic [ref=e124]:
+      - heading "We don't rely on broken pharmacy APIs. We rely on each other." [level=2] [ref=e125]:
+        - text: We don't rely on broken pharmacy APIs.
+        - text: We rely on each other.
+      - paragraph [ref=e126]: Share your fill status and unlock the full intelligence suite — free, forever, for contributors.
+    - generic [ref=e127]:
+      - generic [ref=e128]:
+        - generic [ref=e129]: 🗺️
+        - generic [ref=e130]: Regional heatmaps
+      - generic [ref=e131]:
+        - generic [ref=e132]: 🔔
+        - generic [ref=e133]: Shortage alerts
+      - generic [ref=e134]:
+        - generic [ref=e135]: 📊
+        - generic [ref=e136]: Advanced predictions
+    - generic [ref=e137]:
+      - textbox "you@example.com" [ref=e138]
+      - button "Get Early Access" [ref=e139]
+    - paragraph [ref=e140]: Free for early contributors. No spam. Unsubscribe anytime.
+    - paragraph [ref=e141]: ADHD Med Survival Suite · 2026
