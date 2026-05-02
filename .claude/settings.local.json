@@ -15,7 +15,10 @@
       "mcp__plugin_playwright_playwright__browser_network_requests",
       "mcp__plugin_playwright_playwright__browser_console_messages",
       "Bash(gh auth *)",
-      "PowerShell(gh auth *)"
+      "PowerShell(gh auth *)",
+      "Bash(git remote *)",
+      "Bash(git add *)",
+      "Bash(Get-ChildItem *)"
     ]
   }
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import posthog from 'posthog-js'
 
 const perks = [
@@ -97,6 +97,32 @@ export function CTASection() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const sectionRef = useRef<HTMLElement>(null)
+  const hasFiredViewRef = useRef(false)
+  const hasFiredFocusRef = useRef(false)
+
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !hasFiredViewRef.current) {
+          posthog.capture('cta_viewed')
+          hasFiredViewRef.current = true
+          observer.disconnect()
+        }
+      },
+      { threshold: 0.5 },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  function handleEmailFocus() {
+    if (hasFiredFocusRef.current) return
+    posthog.capture('cta_email_focused')
+    hasFiredFocusRef.current = true
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -117,7 +143,8 @@ export function CTASection() {
         throw new Error(data.error ?? 'Something went wrong')
       }
 
-      posthog.capture('waitlist_signup')
+      posthog.identify(email)
+      posthog.capture('waitlist_signup', { email })
       setStatus('success')
     } catch (err) {
       setStatus('error')
@@ -127,6 +154,7 @@ export function CTASection() {
 
   return (
     <section
+      ref={sectionRef}
       id="waitlist"
       className="relative flex h-screen flex-col items-center justify-center px-6 text-center overflow-hidden"
     >
@@ -189,6 +217,7 @@ export function CTASection() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onFocus={handleEmailFocus}
                 placeholder="you@example.com"
                 className="flex-1 rounded-lg border border-[#30363D] bg-[#161B22] px-4 py-3.5 text-[#F0F6FC] placeholder-[#8B949E] outline-none transition-colors focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316]"
               />
