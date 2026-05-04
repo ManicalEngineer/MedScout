@@ -173,11 +173,11 @@ export function CTASection() {
           <ThankYouPanel />
         ) : (
           <>
-            {/* Community badge */}
+            {/* Badge */}
             <div className="flex items-center gap-3">
               <div className="h-px flex-1 bg-[#30363D]" style={{ maxWidth: 64 }} />
               <span className="text-xs font-medium uppercase tracking-widest text-[#8B949E]">
-                Built by the community, for the community
+                Stop the monthly guessing game
               </span>
               <div className="h-px flex-1 bg-[#30363D]" style={{ maxWidth: 64 }} />
             </div>
@@ -185,15 +185,11 @@ export function CTASection() {
             {/* Headline */}
             <div>
               <h2 className="mb-4 text-4xl font-bold leading-tight text-[#F0F6FC] sm:text-5xl">
-                We don&apos;t rely on{' '}
-                <span className="text-[#8B949E] line-through decoration-[#EF4444]">
-                  broken pharmacy APIs.
-                </span>
-                <br />
-                We rely on <span className="text-[#F97316]">each other.</span>
+                Know where it is{' '}
+                <span className="text-[#F97316]">before you run out.</span>
               </h2>
               <p className="text-lg leading-relaxed text-[#8B949E]">
-                Share your fill status and unlock the full intelligence suite — free, forever, for contributors.
+                Every contributor shares their fill status — you get real-time stock intelligence in return. Free, forever, for contributors.
               </p>
             </div>
 

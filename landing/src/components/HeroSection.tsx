@@ -31,7 +31,8 @@ export function HeroSection() {
 
         {/* Subheadline */}
         <p className="animate-fade-up-delay-2 max-w-xl text-xl leading-relaxed text-[#8B949E]">
-          Calling 20 pharmacies every month isn&apos;t a medical plan&mdash;it&apos;s a second job.
+          Calling 20 pharmacies every month isn&apos;t a medical plan&mdash;it&apos;s a second job.{' '}
+          <span className="text-[#F0F6FC]">No calls. No drives. No panic.</span>
         </p>
 
         {/* Feature tags */}
@@ -56,7 +57,7 @@ export function HeroSection() {
             className="rounded-lg bg-[#F97316] px-8 py-4 text-base font-semibold text-white shadow-lg transition-colors hover:bg-[#EA6C0A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#F97316]"
             style={{ boxShadow: '0 0 24px rgba(249,115,22,0.25)' }}
           >
-            Join the Beta Waitlist
+            Find My Medication &rarr;
           </a>
           <p className="text-sm text-[#8B949E]">Free for early contributors. No spam, just survival.</p>
         </div>

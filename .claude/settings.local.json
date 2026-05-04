@@ -18,7 +18,8 @@
       "PowerShell(gh auth *)",
       "Bash(git remote *)",
       "Bash(git add *)",
-      "Bash(Get-ChildItem *)"
+      "Bash(Get-ChildItem *)",
+      "Bash(dir /s /b \"C:\\\\Users\\\\seanb\\\\Documents\\\\GitHub\\\\ADHDBuddy\\\\landing\\\\src\\\\*.tsx\")"
     ]
   }
 }
