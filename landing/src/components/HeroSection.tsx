@@ -2,7 +2,7 @@ import { ChevronDown } from 'lucide-react'
 
 export function HeroSection() {
   return (
-    <section className="relative flex h-screen flex-col items-center justify-center px-6 text-center overflow-hidden">
+    <section className="relative flex min-h-screen flex-col items-center justify-center px-6 py-20 text-center overflow-hidden">
       {/* Subtle radial glow behind headline */}
       <div
         aria-hidden
@@ -24,13 +24,13 @@ export function HeroSection() {
         </span>
 
         {/* Headline */}
-        <h1 className="animate-fade-up-delay-1 text-5xl font-bold leading-tight tracking-tight text-[#F0F6FC] sm:text-6xl lg:text-7xl">
+        <h1 className="animate-fade-up-delay-1 text-4xl font-bold leading-tight tracking-tight text-[#F0F6FC] sm:text-5xl lg:text-7xl">
           Stop the{' '}
-          <span className="text-[#F97316]">Pharmacy&nbsp;Scavenger&nbsp;Hunt.</span>
+          <span className="text-[#F97316]">Pharmacy Scavenger Hunt.</span>
         </h1>
 
         {/* Subheadline */}
-        <p className="animate-fade-up-delay-2 max-w-xl text-xl leading-relaxed text-[#8B949E]">
+        <p className="animate-fade-up-delay-2 max-w-xl text-lg leading-relaxed text-[#8B949E] sm:text-xl">
           Calling 20 pharmacies every month isn&apos;t a medical plan&mdash;it&apos;s a second job.{' '}
           <span className="text-[#F0F6FC]">No calls. No drives. No panic.</span>
         </p>

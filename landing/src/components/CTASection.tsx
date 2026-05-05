@@ -156,7 +156,7 @@ export function CTASection() {
     <section
       ref={sectionRef}
       id="waitlist"
-      className="relative flex h-screen flex-col items-center justify-center px-6 text-center overflow-hidden"
+      className="relative flex min-h-screen flex-col items-center justify-center px-6 py-20 text-center overflow-hidden"
     >
       {/* Glow */}
       <div
@@ -184,7 +184,7 @@ export function CTASection() {
 
             {/* Headline */}
             <div>
-              <h2 className="mb-4 text-4xl font-bold leading-tight text-[#F0F6FC] sm:text-5xl">
+              <h2 className="mb-4 text-3xl font-bold leading-tight text-[#F0F6FC] sm:text-4xl lg:text-5xl">
                 Know where it is{' '}
                 <span className="text-[#F97316]">before you run out.</span>
               </h2>

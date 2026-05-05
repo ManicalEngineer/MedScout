@@ -69,7 +69,7 @@ export function MapMockup() {
         </svg>
 
         {/* Filter pills */}
-        <div className="absolute left-3 top-3 flex gap-1.5">
+        <div className="absolute left-3 top-3 flex flex-wrap gap-1.5" style={{ maxWidth: 'calc(100% - 1.5rem)' }}>
           <span className="rounded-full border border-[#30363D] bg-[#161B22] px-2.5 py-1 text-[10px] font-medium text-[#F0F6FC]">
             Stimulants
           </span>

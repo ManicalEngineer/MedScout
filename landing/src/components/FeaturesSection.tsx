@@ -35,7 +35,7 @@ const features = [
 
 export function FeaturesSection() {
   return (
-    <section className="flex h-screen flex-col items-center justify-center px-6 py-16" style={{ background: '#161B22' }}>
+    <section className="flex flex-col items-center justify-center px-6 py-16 sm:py-24" style={{ background: '#161B22' }}>
       <div className="w-full max-w-5xl">
         {/* Heading */}
         <div className="mb-10 text-center">
