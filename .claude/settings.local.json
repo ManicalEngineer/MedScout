@@ -21,7 +21,8 @@
       "Bash(Get-ChildItem *)",
       "Bash(dir /s /b \"C:\\\\Users\\\\seanb\\\\Documents\\\\GitHub\\\\ADHDBuddy\\\\landing\\\\src\\\\*.tsx\")",
       "Bash(taskkill *)",
-      "PowerShell(Stop-Process *)"
+      "PowerShell(Stop-Process *)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

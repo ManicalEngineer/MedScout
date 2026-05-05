@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { Lexend } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/react'
 import { PostHogProvider } from '@/components/PostHogProvider'
 import './globals.css'
 
@@ -28,7 +27,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PostHogProvider>
           {children}
         </PostHogProvider>
-        <Analytics />
       </body>
     </html>
   )
