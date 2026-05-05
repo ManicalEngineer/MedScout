@@ -19,7 +19,9 @@
       "Bash(git remote *)",
       "Bash(git add *)",
       "Bash(Get-ChildItem *)",
-      "Bash(dir /s /b \"C:\\\\Users\\\\seanb\\\\Documents\\\\GitHub\\\\ADHDBuddy\\\\landing\\\\src\\\\*.tsx\")"
+      "Bash(dir /s /b \"C:\\\\Users\\\\seanb\\\\Documents\\\\GitHub\\\\ADHDBuddy\\\\landing\\\\src\\\\*.tsx\")",
+      "Bash(taskkill *)",
+      "PowerShell(Stop-Process *)"
     ]
   }
 }
