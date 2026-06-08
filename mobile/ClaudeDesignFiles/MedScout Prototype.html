@@ -1,0 +1,1928 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MedScout — interactive prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #1a1a1a; font-family: 'Lexend', system-ui, sans-serif; }
+  #root { width: 100vw; min-height: 100vh; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @keyframes slideDown { from { transform: translateY(-12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  button:active { transform: scale(0.97); transition: transform 80ms; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" data-presets="react">
+// MedScout hi-fi — design tokens, primitives, icons
+
+const TOK = {
+  bg: "#0D1117",
+  surface: "#161B22",
+  surface2: "#1C232C",
+  border: "#30363D",
+  borderSoft: "#21262D",
+  primary: "#F97316",
+  primaryGlow: "rgba(249,115,22,0.18)",
+  primaryDim: "rgba(249,115,22,0.10)",
+  success: "#22C55E",
+  successDim: "rgba(34,197,94,0.12)",
+  danger: "#EF4444",
+  dangerDim: "rgba(239,68,68,0.12)",
+  vault: "#8B5CF6",
+  vaultDim: "rgba(139,92,246,0.14)",
+  text: "#F0F6FC",
+  textMuted: "#8B949E",
+  textDim: "#6E7681",
+};
+
+// ───────── Phone shell (iPhone-ish, dark, MedScout-tuned) ─────────
+const Phone = ({ children, w = 390, h = 800, time = "9:41", showStatusBar = true, onTap, dataAttrs = {} }) => (
+  <div
+    style={{
+      width: w, height: h, borderRadius: 48, overflow: "hidden",
+      position: "relative", background: "#000",
+      boxShadow: "0 24px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06), 0 0 0 8px #1a1a1a",
+      fontFamily: "'Lexend', system-ui, sans-serif",
+      WebkitFontSmoothing: "antialiased",
+    }}
+    onClick={onTap}
+    {...dataAttrs}
+  >
+    {/* dynamic island */}
+    <div style={{
+      position: "absolute", top: 11, left: "50%", transform: "translateX(-50%)",
+      width: 120, height: 35, borderRadius: 22, background: "#000", zIndex: 50,
+    }} />
+    {/* screen content */}
+    <div style={{
+      position: "absolute", inset: 0,
+      background: TOK.bg, color: TOK.text,
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
+      {showStatusBar && (
+        <div style={{
+          height: 54, paddingTop: 18,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "18px 32px 0",
+          fontSize: 15, fontWeight: 600, color: TOK.text, letterSpacing: -0.2,
+          flexShrink: 0,
+        }}>
+          <span>{time}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon.signal/> <Icon.wifi/> <Icon.battery/>
+          </div>
+        </div>
+      )}
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>{children}</div>
+    </div>
+    {/* home indicator */}
+    <div style={{
+      position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)",
+      width: 134, height: 5, borderRadius: 100, background: "rgba(255,255,255,0.5)", zIndex: 60,
+    }} />
+  </div>
+);
+
+// ───────── Icons (line, 24px) ─────────
+const ic = (path, { size = 22, stroke = "currentColor", fill = "none", sw = 1.8, viewBox = "0 0 24 24" } = {}) =>
+  <svg width={size} height={size} viewBox={viewBox} fill={fill} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>{path}</svg>;
+
+const Icon = {
+  home:    (p={}) => ic(<><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></>, p),
+  phone:   (p={}) => ic(<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>, p),
+  map:     (p={}) => ic(<><path d="M1 6v15l7-3 8 3 7-3V3l-7 3-8-3-7 3z"/><path d="M8 3v15M16 6v15"/></>, p),
+  user:    (p={}) => ic(<><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/></>, p),
+  doc:     (p={}) => ic(<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></>, p),
+  lock:    (p={}) => ic(<><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></>, p),
+  plus:    (p={}) => ic(<><path d="M12 5v14M5 12h14"/></>, p),
+  bolt:    (p={}) => ic(<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/>, { ...p, fill: "currentColor" }),
+  check:   (p={}) => ic(<path d="M5 13l4 4L19 7"/>, p),
+  x:       (p={}) => ic(<path d="M6 6l12 12M18 6L6 18"/>, p),
+  alert:   (p={}) => ic(<><path d="M10.3 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/></>, p),
+  back:    (p={}) => ic(<><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></>, p),
+  edit:    (p={}) => ic(<><path d="M17 3a2.83 2.83 0 014 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></>, p),
+  spark:   (p={}) => ic(<><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></>, p),
+  share:   (p={}) => ic(<><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><path d="M16 6l-4-4-4 4M12 2v13"/></>, p),
+  clock:   (p={}) => ic(<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>, p),
+  pin:     (p={}) => ic(<><path d="M12 22s-7-7-7-13a7 7 0 0114 0c0 6-7 13-7 13z"/><circle cx="12" cy="9" r="2.5"/></>, p),
+  filter:  (p={}) => ic(<path d="M3 4h18l-7 9v6l-4 2v-8L3 4z"/>, p),
+  signal:  () => <svg width="17" height="11" viewBox="0 0 17 11"><rect x="0" y="7" width="3" height="4" rx="1" fill="#F0F6FC"/><rect x="4.5" y="5" width="3" height="6" rx="1" fill="#F0F6FC"/><rect x="9" y="3" width="3" height="8" rx="1" fill="#F0F6FC"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="#F0F6FC"/></svg>,
+  wifi:    () => <svg width="17" height="12" viewBox="0 0 17 12" fill="#F0F6FC"><path d="M8.5 3.2a8 8 0 015.7 2.3l1-1A9.5 9.5 0 008.5 1.7 9.5 9.5 0 001.8 4.5l1 1a8 8 0 015.7-2.3z"/><path d="M8.5 6.5a4.7 4.7 0 013.4 1.4l1-1a6.2 6.2 0 00-8.8 0l1 1A4.7 4.7 0 018.5 6.5z"/><circle cx="8.5" cy="10" r="1.5"/></svg>,
+  battery: () => <svg width="26" height="12" viewBox="0 0 26 12"><rect x="0.5" y="0.5" width="22" height="11" rx="3" stroke="#F0F6FC" strokeOpacity="0.45" fill="none"/><rect x="2" y="2" width="19" height="8" rx="1.6" fill="#F0F6FC"/><rect x="23.5" y="3.5" width="2" height="5" rx="1" fill="#F0F6FC" fillOpacity="0.45"/></svg>,
+  drag:    (p={}) => ic(<><circle cx="9" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="6" r="1.5" fill="currentColor"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/><circle cx="9" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/></>, { ...p, sw: 0 }),
+  minus:   (p={}) => ic(<path d="M5 12h14"/>, p),
+  rotate:  (p={}) => ic(<><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M21 3v5h-5"/></>, p),
+  bell:    (p={}) => ic(<><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 004 0"/></>, p),
+  faceid:  (p={}) => ic(<><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><path d="M9 9v1M15 9v1M9 15s1 1.5 3 1.5S15 15 15 15M12 9v3.5h-1"/></>, p),
+  pill:    (p={}) => ic(<><rect x="2" y="9" width="20" height="6" rx="3" transform="rotate(-30 12 12)"/><path d="M8.5 8.5l7 7" transform="rotate(-30 12 12)"/></>, p),
+  flame:   (p={}) => ic(<path d="M12 2s4 4 4 8a4 4 0 11-8 0c0-1 .5-2 1-3 0 0 0 3 2 3s2-2 1-4-2-3-2-4 1-1 2 0z"/>, { ...p, fill: "currentColor" }),
+  trophy:  (p={}) => ic(<><path d="M6 4h12v4a6 6 0 01-12 0V4z"/><path d="M6 6H3a3 3 0 003 3M18 6h3a3 3 0 01-3 3M9 17h6M10 17v3h4v-3"/></>, p),
+  search:  (p={}) => ic(<><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></>, p),
+  arrow:   (p={}) => ic(<><path d="M5 12h14M13 6l6 6-6 6"/></>, p),
+  star:    (p={}) => ic(<path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/>, p),
+};
+
+// ───────── Tab bar ─────────
+const TabBar = ({ active = "home", onChange = () => {} }) => {
+  const tabs = [
+    { id: "home", label: "Home", icon: Icon.home },
+    { id: "hunt", label: "Hunt", icon: Icon.phone },
+    { id: "map",  label: "Map",  icon: Icon.map },
+    { id: "me",   label: "Me",   icon: Icon.user },
+  ];
+  return (
+    <div style={{
+      borderTop: `0.5px solid ${TOK.border}`,
+      background: "rgba(13,17,23,0.92)",
+      backdropFilter: "blur(20px)",
+      padding: "8px 12px 22px",
+      display: "flex", justifyContent: "space-around",
+      flexShrink: 0,
+    }}>
+      {tabs.map(t => {
+        const a = t.id === active;
+        return (
+          <button key={t.id} onClick={() => onChange(t.id)} style={{
+            background: "none", border: "none", padding: "6px 10px",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+            color: a ? TOK.primary : TOK.textMuted,
+            cursor: "pointer", fontFamily: "inherit",
+          }}>
+            <t.icon size={24} sw={a ? 2.2 : 1.8}/>
+            <span style={{ fontSize: 10, fontWeight: a ? 600 : 500, letterSpacing: 0.1 }}>{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+// ───────── Card primitives ─────────
+const Card = ({ children, style = {}, accent = false, danger = false, success = false, onClick }) => (
+  <div onClick={onClick} style={{
+    background: TOK.surface,
+    border: `1px solid ${accent ? TOK.primary : danger ? TOK.danger : success ? TOK.success : TOK.border}`,
+    borderRadius: 14,
+    padding: 14,
+    cursor: onClick ? "pointer" : "default",
+    ...style,
+  }}>{children}</div>
+);
+
+const Btn = ({ children, onClick, variant = "primary", size = "md", full = true, style = {}, disabled = false, dataAttrs = {} }) => {
+  const sizes = {
+    sm: { padding: "8px 14px", fontSize: 13, h: 36 },
+    md: { padding: "12px 18px", fontSize: 15, h: 48 },
+    lg: { padding: "16px 20px", fontSize: 16, h: 56 },
+  };
+  const s = sizes[size];
+  const variants = {
+    primary: { bg: TOK.primary, color: "#0D1117", border: TOK.primary, shadow: `0 4px 16px ${TOK.primaryGlow}` },
+    success: { bg: TOK.success, color: "#0D1117", border: TOK.success, shadow: "0 4px 16px rgba(34,197,94,0.2)" },
+    ghost:   { bg: "transparent", color: TOK.textMuted, border: TOK.border, shadow: "none" },
+    outline: { bg: "transparent", color: TOK.primary, border: TOK.primary, shadow: "none" },
+    dark:    { bg: TOK.surface2, color: TOK.text, border: TOK.border, shadow: "none" },
+  };
+  const v = variants[variant];
+  return (
+    <button onClick={onClick} disabled={disabled} {...dataAttrs} style={{
+      background: v.bg, color: v.color, border: `1px solid ${v.border}`,
+      borderRadius: 12, padding: s.padding, fontSize: s.fontSize, fontWeight: 600,
+      minHeight: s.h, width: full ? "100%" : "auto",
+      fontFamily: "inherit", cursor: disabled ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.4 : 1, boxShadow: v.shadow,
+      letterSpacing: -0.1,
+      display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
+      ...style,
+    }}>{children}</button>
+  );
+};
+
+const Badge = ({ children, kind = "muted", style = {} }) => {
+  const kinds = {
+    success: { c: TOK.success, bg: TOK.successDim },
+    danger:  { c: TOK.danger, bg: TOK.dangerDim },
+    primary: { c: TOK.primary, bg: TOK.primaryDim },
+    vault:   { c: TOK.vault, bg: TOK.vaultDim },
+    muted:   { c: TOK.textMuted, bg: "rgba(139,148,158,0.1)" },
+  };
+  const k = kinds[kind];
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+      color: k.c, background: k.bg, letterSpacing: 0.1,
+      ...style,
+    }}>{children}</span>
+  );
+};
+
+// Status with text + dot (never color alone — accessibility rule)
+const Status = ({ kind = "muted", label, style = {} }) => {
+  const map = {
+    ok: { c: TOK.success, t: label || "in stock" },
+    out: { c: TOK.danger, t: label || "out" },
+    soon: { c: TOK.primary, t: label || "check back" },
+    muted: { c: TOK.textMuted, t: label || "—" },
+  };
+  const s = map[kind];
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, color: s.c, fontWeight: 500, ...style }}>
+      <span style={{ width: 7, height: 7, borderRadius: 999, background: s.c }}/>
+      {s.t}
+    </span>
+  );
+};
+
+Object.assign(window, { TOK, Phone, Icon, TabBar, Card, Btn, Badge, Status });
+
+// MedScout hi-fi — screen components
+
+// ═══════════════════════════════════════════════════════════════
+// 1. DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+const Dashboard = ({ onStartHunt, onLogRefill, onOpenPharmacy }) => {
+  const [bannerDismissed, setBannerDismissed] = React.useState(false);
+  const days = 6;
+  const ringColor = days > 10 ? TOK.success : days >= 5 ? TOK.primary : TOK.danger;
+
+  const recentCalls = [
+    { n: "Walgreens · Main St", t: "2h ago", k: "out" },
+    { n: "Corner Pharmacy", t: "Yesterday", k: "soon", label: "back Fri" },
+    { n: "Target Rx", t: "Friday", k: "ok" },
+    { n: "CVS · Main", t: "Thu", k: "ok" },
+    { n: "Rite Aid · Pine", t: "Wed", k: "out" },
+    { n: "Walmart Rx", t: "Tue", k: "soon", label: "back Sun" },
+    { n: "Sav-On · 4th", t: "Mon", k: "ok" },
+    { n: "Costco Pharmacy", t: "Last week", k: "out" },
+    { n: "Walgreens · 5th", t: "Last week", k: "ok" },
+  ];
+
+  return (
+    <div data-screen-label="01 Dashboard" style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      {/* Fixed header region */}
+      <div style={{ padding: "8px 16px 0", flexShrink: 0 }}>
+        {!bannerDismissed && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            background: TOK.dangerDim, border: `1px solid rgba(239,68,68,0.3)`,
+            borderRadius: 10, padding: "9px 12px", marginBottom: 16, fontSize: 12,
+          }}>
+            <Icon.alert size={16} stroke={TOK.danger}/>
+            <span style={{ flex: 1, color: TOK.text }}>Regional shortage: <span style={{ color: TOK.textMuted }}>34% lower fills this week</span></span>
+            <button onClick={() => setBannerDismissed(true)} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 2, display: "flex" }}>
+              <Icon.x size={14}/>
+            </button>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 4, fontSize: 13, color: TOK.textMuted }}>Adderall XR · 20mg</div>
+        <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 16px", letterSpacing: -0.6, lineHeight: 1.15 }}>You're 6 days ahead</h1>
+
+        {/* Ring */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+          <Ring days={days} color={ringColor}/>
+        </div>
+
+        <Btn variant="primary" size="lg" onClick={onStartHunt}>
+          <Icon.phone size={18}/> Start today's hunt
+        </Btn>
+
+        <div style={{ marginTop: 12, marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 11, color: TOK.textDim, letterSpacing: 0.3 }}>
+          <span>5 PHARMACIES · 0 CALLED TODAY</span>
+          <span style={{ color: TOK.border }}>·</span>
+          <button onClick={onLogRefill} style={{ background: "none", border: "none", color: TOK.success, fontFamily: "inherit", fontSize: 11, fontWeight: 600, letterSpacing: 0.3, cursor: "pointer", padding: 0 }}>LOG REFILL →</button>
+        </div>
+      </div>
+
+      {/* Scrollable region: insight + recent calls */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 16px 16px", WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 20px), transparent)", maskImage: "linear-gradient(to bottom, black calc(100% - 20px), transparent)" }}>
+        {/* Insight card */}
+        <Card accent style={{ background: TOK.primaryDim, borderColor: "rgba(249,115,22,0.4)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: TOK.primary, fontWeight: 600, letterSpacing: 0.6, marginBottom: 6 }}>
+            <Icon.spark size={13} stroke={TOK.primary}/> INSIGHT
+          </div>
+          <div style={{ fontSize: 14, lineHeight: 1.4, color: TOK.text }}>
+            CVS Main has had stock <strong style={{ color: TOK.primary }}>3 of the last 4 weeks</strong> — your best near-term bet.
+          </div>
+        </Card>
+
+        <div style={{ marginTop: 22, marginBottom: 8, fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6 }}>RECENT CALLS</div>
+        <Card style={{ padding: 0 }}>
+          {recentCalls.map((r, i) => (
+            <div key={i} onClick={() => onOpenPharmacy && onOpenPharmacy({ n: r.n, k: r.k, label: r.label, sub: "" })} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "12px 14px", cursor: "pointer",
+              borderBottom: i < recentCalls.length - 1 ? `0.5px solid ${TOK.borderSoft}` : "none",
+            }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>{r.n}</div>
+                <div style={{ fontSize: 11, color: TOK.textMuted, marginTop: 2 }}>{r.t}</div>
+              </div>
+              <Status kind={r.k} label={r.label}/>
+            </div>
+          ))}
+        </Card>
+      </div>
+      <TabBar active="home"/>
+    </div>
+  );
+};
+
+// Animated progress ring
+const Ring = ({ days, color }) => {
+  const size = 168, stroke = 11;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.min(days / 14, 1);
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={TOK.surface} strokeWidth={stroke}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${c * pct} ${c}`} strokeLinecap="round"
+          style={{ filter: `drop-shadow(0 0 12px ${color}80)`, transition: "stroke-dasharray 600ms ease" }}
+        />
+      </svg>
+      <div style={{
+        position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+      }}>
+        <div style={{ fontSize: 44, fontWeight: 700, lineHeight: 1, color: TOK.text, letterSpacing: -1.5 }}>{days}</div>
+        <div style={{ fontSize: 10, color: TOK.textMuted, marginTop: 4, letterSpacing: 0.4, textTransform: "uppercase", fontWeight: 500 }}>days remaining</div>
+        <div style={{ fontSize: 10, color: TOK.textDim, marginTop: 4 }}>est. May 12</div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 2. DIALER
+// ═══════════════════════════════════════════════════════════════
+const PHARMACIES = [
+  { id: "wal-main", n: "Walgreens", sub: "Main St · 0.4mi", t: "2h ago", k: "out", v: false },
+  { id: "corner", n: "Corner Pharmacy", sub: "Pine Ave · 0.8mi", t: "Yesterday", k: "soon", label: "back Fri", v: false },
+  { id: "target", n: "Target Rx", sub: "12th St · 1.2mi", t: "Friday", k: "ok", v: false },
+  { id: "family", n: "Family Care Rx", sub: "Oak St · 1.6mi", t: "—", k: "muted", label: "no calls", v: true },
+  { id: "cvs-elm", n: "CVS", sub: "Elm Ave · 2.1mi", t: "Wed", k: "out", v: false },
+];
+
+const Dialer = ({ onCallPharmacy, onAddPharmacy, onOpenPharmacy, segment, onSegmentChange }) => (
+  <div data-screen-label="02 Dialer" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ padding: "4px 16px 0" }}>
+      <h1 style={{ fontSize: 30, fontWeight: 700, margin: "8px 0 4px", letterSpacing: -0.6 }}>Hunt</h1>
+      <div style={{ fontSize: 13, color: TOK.textMuted, marginBottom: 16 }}>5 saved pharmacies · sorted by distance</div>
+
+      {/* segmented control */}
+      <div style={{ display: "flex", background: TOK.surface, borderRadius: 10, padding: 3, marginBottom: 16, border: `1px solid ${TOK.borderSoft}` }}>
+        {[{id:"dial",l:"Dialer"},{id:"log",l:"Call Log"}].map(s => (
+          <button key={s.id} onClick={() => onSegmentChange(s.id)} style={{
+            flex: 1, padding: "8px 0", fontSize: 13, fontWeight: 600,
+            background: segment === s.id ? TOK.primary : "transparent",
+            color: segment === s.id ? "#0D1117" : TOK.textMuted,
+            border: "none", borderRadius: 8,
+            cursor: "pointer", fontFamily: "inherit",
+          }}>{s.l}</button>
+        ))}
+      </div>
+    </div>
+
+    {segment === "dial" ? <DialerList onCallPharmacy={onCallPharmacy} onAddPharmacy={onAddPharmacy} onOpenPharmacy={onOpenPharmacy}/> : <CallLog/>}
+
+    <TabBar active="hunt"/>
+  </div>
+);
+
+const DialerList = ({ onCallPharmacy, onAddPharmacy, onOpenPharmacy }) => (
+  <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px", position: "relative" }}>
+    <Card style={{ padding: 0 }}>
+      {PHARMACIES.map((p, i) => (
+        <div key={p.id} onClick={() => onOpenPharmacy && onOpenPharmacy(p)} style={{
+          display: "flex", alignItems: "center", padding: "14px", cursor: "pointer",
+          borderBottom: i < PHARMACIES.length - 1 ? `0.5px solid ${TOK.borderSoft}` : "none",
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 15, fontWeight: 600, marginBottom: 2 }}>
+              {p.v && <Icon.lock size={13} stroke={TOK.vault}/>}
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.n}</span>
+            </div>
+            <div style={{ fontSize: 11, color: TOK.textMuted, marginBottom: 4 }}>{p.sub} · {p.t}</div>
+            <Status kind={p.k} label={p.label}/>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginLeft: 8 }}>
+            <button
+              onClick={(e) => { e.stopPropagation(); onCallPharmacy(p); }}
+              style={{
+                width: 44, height: 44, borderRadius: 10,
+                background: TOK.primaryDim, border: `1px solid ${TOK.primary}`,
+                color: TOK.primary, display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer",
+              }}
+              aria-label={`Call ${p.n}`}
+            ><Icon.phone size={18} stroke={TOK.primary}/></button>
+            <button onClick={(e) => e.stopPropagation()} style={{
+              width: 44, height: 44, borderRadius: 10,
+              background: "transparent", border: `1px solid ${TOK.border}`,
+              color: TOK.textMuted, display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer",
+            }} aria-label="View script"><Icon.doc size={18}/></button>
+          </div>
+        </div>
+      ))}
+    </Card>
+
+    {/* Outline + add button (variant C styling) */}
+    <button onClick={onAddPharmacy} style={{
+      position: "absolute", right: 20, bottom: 20,
+      width: 52, height: 52, borderRadius: 999,
+      background: TOK.bg, border: `1.5px solid ${TOK.primary}`,
+      color: TOK.primary, display: "flex", alignItems: "center", justifyContent: "center",
+      cursor: "pointer", boxShadow: `0 4px 16px ${TOK.primaryGlow}`,
+    }} aria-label="Add pharmacy"><Icon.plus size={22}/></button>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+// 3. CALL LOG
+// ═══════════════════════════════════════════════════════════════
+const LOG_ENTRIES = [
+  { day: "TUESDAY · TODAY", items: [
+    { n: "Walgreens · Main", t: "2:14p · 02:34", k: "out", takeaway: "No 20mg in stock; new shipment Friday afternoon" },
+    { n: "Corner Pharmacy", t: "1:02p · 01:18", k: "soon", takeaway: "Shipment Thursday morning — call back early" },
+  ]},
+  { day: "MONDAY", items: [
+    { n: "Target Rx", t: "Fri · 02:01", k: "ok", takeaway: "In stock; will not hold controlled substances" },
+    { n: "Family Care Rx", t: "Thu · 00:54", k: "out", takeaway: "Out indefinitely — supplier issue", v: true },
+  ]},
+];
+
+const CallLog = () => (
+  <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
+    {LOG_ENTRIES.map(group => (
+      <div key={group.day}>
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, margin: "12px 0 8px" }}>{group.day}</div>
+        {group.items.map((r, i) => (
+          <Card key={i} style={{
+            marginBottom: 8, padding: 0,
+            borderLeft: `3px solid ${r.k === "out" ? TOK.danger : r.k === "ok" ? TOK.success : TOK.primary}`,
+            borderTopLeftRadius: 14, borderBottomLeftRadius: 14,
+          }}>
+            <div style={{ padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600 }}>
+                  {r.v && <Icon.lock size={12} stroke={TOK.vault}/>}
+                  {r.n}
+                </div>
+                <button style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 4, display: "flex" }}><Icon.edit size={14}/></button>
+              </div>
+              <div style={{ fontSize: 11, color: TOK.textDim, marginTop: 2 }}>{r.t}</div>
+              <div style={{
+                marginTop: 10, padding: "8px 10px",
+                background: TOK.primaryDim, borderRadius: 8,
+                fontSize: 12, color: TOK.text, lineHeight: 1.4,
+                display: "flex", gap: 6, alignItems: "flex-start",
+              }}>
+                <Icon.spark size={12} stroke={TOK.primary} sw={2.4}/>
+                <span><span style={{ color: TOK.primary, fontWeight: 600 }}>Key takeaway · </span>{r.takeaway}</span>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    ))}
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+// 4. PRE-FLIGHT
+// ═══════════════════════════════════════════════════════════════
+const TONES = [
+  { id: "short", label: "Short", body: 'Hi — do you have 20mg Adderall XR in stock today?' },
+  { id: "polite", label: "Polite", body: 'Hi, I\'m a patient checking if you\'re able to facilitate a transfer for 20mg Adderall XR. Is that something you currently have in stock?' },
+  { id: "ins", label: "Insurance-first", body: 'Hi, I need to check stock and whether you accept BlueCross for a controlled substance transfer — 20mg Adderall XR.' },
+];
+
+const PreFlight = ({ pharmacy, onStartCall, onBack, onSkipScript }) => {
+  const [tone, setTone] = React.useState("polite");
+  const [grumpy, setGrumpy] = React.useState(false);
+  const t = TONES.find(x => x.id === tone);
+  const body = grumpy ? "Got 20mg Adderall XR?" : t.body;
+  return (
+    <div data-screen-label="03 Pre-Flight" style={{ display: "flex", flexDirection: "column", height: "100%", padding: "8px 18px 22px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <button onClick={onBack} style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: TOK.surface, border: `1px solid ${TOK.borderSoft}`,
+          color: TOK.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        }} aria-label="Back"><Icon.back size={16}/></button>
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.8 }}>PRE-FLIGHT</div>
+        <button onClick={onSkipScript} style={{
+          background: "none", border: "none", color: TOK.textMuted, fontSize: 13, fontFamily: "inherit", cursor: "pointer", fontWeight: 500,
+        }}>Skip</button>
+      </div>
+
+      {/* Pharmacy header */}
+      <h1 style={{ fontSize: 24, fontWeight: 700, margin: "4px 0 4px", letterSpacing: -0.4 }}>{pharmacy.n}</h1>
+      <div style={{ fontSize: 14, color: TOK.textMuted }}>(555) 123-4567</div>
+      <div style={{ fontSize: 12, color: TOK.textDim, marginTop: 4, marginBottom: 18, display: "flex", alignItems: "center", gap: 8 }}>
+        Last call · 2h ago · <Status kind={pharmacy.k} label={pharmacy.label}/>
+      </div>
+
+      {/* Tone selector */}
+      <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>TONE</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+        {TONES.map(x => (
+          <button key={x.id} onClick={() => setTone(x.id)} style={{
+            flex: 1, padding: "9px 4px", fontSize: 12, fontWeight: 600,
+            border: `1px solid ${tone === x.id ? TOK.primary : TOK.border}`,
+            background: tone === x.id ? TOK.primaryDim : "transparent",
+            color: tone === x.id ? TOK.primary : TOK.textMuted,
+            borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+          }}>{x.label}</button>
+        ))}
+      </div>
+
+      {/* Script — collapsible header with edit/regen */}
+      <Card accent style={{ marginBottom: 12, background: TOK.surface, borderColor: TOK.primary, padding: 0, minHeight: 130, overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: `0.5px solid ${TOK.borderSoft}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: TOK.primary, fontWeight: 700, letterSpacing: 0.8 }}>
+            <Icon.spark size={12} stroke={TOK.primary}/> READ ALOUD
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 4, display: "flex", borderRadius: 6 }} aria-label="Edit"><Icon.edit size={14}/></button>
+            <button style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 4, display: "flex", borderRadius: 6 }} aria-label="Regenerate"><Icon.rotate size={14}/></button>
+          </div>
+        </div>
+        <div style={{ padding: 14, fontSize: 17, lineHeight: 1.45, color: TOK.text, fontWeight: 400 }}>
+          "{body.split(/(20mg Adderall XR|BlueCross)/g).map((part, i) =>
+            (part === "20mg Adderall XR" || part === "BlueCross")
+              ? <span key={i} style={{ background: TOK.primaryDim, color: TOK.primary, padding: "1px 5px", borderRadius: 4, fontWeight: 600 }}>{part}</span>
+              : <span key={i}>{part}</span>
+          )}"
+        </div>
+      </Card>
+
+      {/* Grumpy toggle */}
+      <button onClick={() => setGrumpy(g => !g)} style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "12px 14px", marginBottom: 18,
+        background: grumpy ? TOK.primaryDim : TOK.surface,
+        border: `1px solid ${grumpy ? TOK.primary : TOK.borderSoft}`,
+        borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, color: grumpy ? TOK.primary : TOK.text, fontSize: 13, fontWeight: 600 }}>
+          <Icon.bolt size={14}/> Short version
+        </span>
+        <Toggle on={grumpy}/>
+      </button>
+
+      <div style={{ marginTop: "auto" }}>
+        <Btn variant="primary" size="lg" onClick={onStartCall} style={{ marginBottom: 8 }}>
+          <Icon.phone size={18}/> Start call
+        </Btn>
+        <Btn variant="ghost" onClick={onSkipScript}>Skip script</Btn>
+      </div>
+    </div>
+  );
+};
+
+const Toggle = ({ on }) => (
+  <div style={{
+    width: 38, height: 22, borderRadius: 999,
+    background: on ? TOK.primary : TOK.border,
+    position: "relative", transition: "background 200ms",
+  }}>
+    <div style={{
+      position: "absolute", top: 2, left: on ? 18 : 2,
+      width: 18, height: 18, borderRadius: 999, background: "#fff",
+      transition: "left 200ms",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+    }}/>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+// 5. ACTIVE CALL (variant B — floating cards)
+// ═══════════════════════════════════════════════════════════════
+const ActiveCall = ({ pharmacy, onEnd }) => {
+  const [duration, setDuration] = React.useState(8);
+  const [tone, setTone] = React.useState("polite");
+  const [collapsed, setCollapsed] = React.useState(false);
+  React.useEffect(() => {
+    const id = setInterval(() => setDuration(d => d + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const fmt = (s) => `${Math.floor(s/60).toString().padStart(2,"0")}:${(s%60).toString().padStart(2,"0")}`;
+  const t = TONES.find(x => x.id === tone);
+
+  return (
+    <div data-screen-label="04 Active Call" style={{ position: "relative", height: "100%", overflow: "hidden", background: "linear-gradient(180deg, #0D1117 0%, #1C232C 100%)" }}>
+      {/* Native-call-UI mock (subtle, dimmed to show overlay coexists) */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 90, color: TOK.textMuted }}>
+        <div style={{ width: 110, height: 110, borderRadius: 999, background: TOK.surface, border: `1px solid ${TOK.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: TOK.textMuted, marginBottom: 14 }}>
+          <Icon.phone size={42}/>
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 600, color: TOK.text, marginBottom: 4 }}>{pharmacy.n}</div>
+        <div style={{ fontSize: 14, color: TOK.success, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: TOK.success, boxShadow: `0 0 8px ${TOK.success}` }}/>
+          Connected · {fmt(duration)}
+        </div>
+        <div style={{ fontSize: 10, color: TOK.textDim, marginTop: 28, fontStyle: "italic" }}>↑ native call UI ↑</div>
+
+        {/* Call controls (mute / speaker / end) */}
+        <div style={{ position: "absolute", bottom: 60, left: 0, right: 0, display: "flex", justifyContent: "space-around", padding: "0 40px" }}>
+          {[
+            { i: "mic", label: "mute" },
+            { i: "spk", label: "speaker" },
+          ].map(c => (
+            <div key={c.i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 60, height: 60, borderRadius: 999, background: TOK.surface, border: `1px solid ${TOK.border}` }}/>
+              <span style={{ fontSize: 11, color: TOK.textMuted }}>{c.label}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <button onClick={onEnd} style={{
+              width: 60, height: 60, borderRadius: 999, background: TOK.danger, border: "none",
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 4px 16px rgba(239,68,68,0.4)",
+            }}>
+              <Icon.phone size={22} stroke="#fff"/>
+            </button>
+            <span style={{ fontSize: 11, color: TOK.textMuted }}>end</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Floating script card — collapses to pill */}
+      {collapsed ? (
+        <button onClick={() => setCollapsed(false)} style={{
+          position: "absolute", top: 18, left: 14,
+          background: "rgba(22,27,34,0.96)", backdropFilter: "blur(20px)",
+          border: `1px solid ${TOK.primary}`, borderRadius: 999, padding: "8px 12px",
+          display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontFamily: "inherit",
+          color: TOK.primary, fontSize: 12, fontWeight: 600,
+          boxShadow: `0 4px 16px ${TOK.primaryGlow}`,
+        }}>
+          <Icon.spark size={14} stroke={TOK.primary}/> Script
+        </button>
+      ) : (
+      <div style={{
+        position: "absolute", top: 18, left: 14, right: 14,
+        background: "rgba(22,27,34,0.96)", backdropFilter: "blur(20px)",
+        border: `1px solid ${TOK.primary}`, borderRadius: 16, padding: 14,
+        boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 0 4px ${TOK.primaryGlow}`,
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, fontSize: 10, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, color: TOK.textMuted }}>
+            <Icon.drag size={14} stroke={TOK.textMuted}/> SCRIPT · DRAG
+          </span>
+          <button onClick={() => setCollapsed(true)} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 2, display: "flex" }}>
+            <Icon.minus size={14}/>
+          </button>
+        </div>
+        <div style={{ fontSize: 16, lineHeight: 1.4, color: TOK.text, marginBottom: 10 }}>"{t.body}"</div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {TONES.map(x => (
+            <button key={x.id} onClick={() => setTone(x.id)} style={{
+              flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 600,
+              border: `1px solid ${tone === x.id ? TOK.primary : TOK.border}`,
+              background: tone === x.id ? TOK.primaryDim : "transparent",
+              color: tone === x.id ? TOK.primary : TOK.textMuted,
+              borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+            }}>{x.label.split("/")[0]}</button>
+          ))}
+        </div>
+      </div>
+      )}
+
+      {/* Live transcribe pill */}
+      <div style={{
+        position: "absolute", bottom: 24, left: 14, right: 14,
+        background: TOK.successDim, border: `1px solid ${TOK.success}`,
+        borderRadius: 10, padding: "8px 12px",
+        display: "flex", alignItems: "center", gap: 8,
+        fontSize: 11, color: TOK.success, fontWeight: 500,
+      }}>
+        <span style={{ width: 7, height: 7, borderRadius: 999, background: TOK.success, animation: "pulse 1.4s infinite" }}/>
+        <span style={{ flex: 1, color: TOK.text, fontWeight: 400, fontSize: 12, fontStyle: "italic" }}>"...we have 30mg but not 20..."</span>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 6. POST-CALL (variant B — inline strip in dialer)
+// ═══════════════════════════════════════════════════════════════
+const PostCall = ({ pharmacy, onConfirm, onDiscard, onCallPharmacy, onSegmentChange }) => (
+  <div data-screen-label="05 Post-Call" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ padding: "4px 16px 0" }}>
+      <h1 style={{ fontSize: 30, fontWeight: 700, margin: "8px 0 4px", letterSpacing: -0.6 }}>Hunt</h1>
+      <div style={{ fontSize: 13, color: TOK.textMuted, marginBottom: 16 }}>5 saved pharmacies · sorted by distance</div>
+      <div style={{ display: "flex", background: TOK.surface, borderRadius: 10, padding: 3, marginBottom: 16, border: `1px solid ${TOK.borderSoft}` }}>
+        {[{id:"dial",l:"Dialer"},{id:"log",l:"Call Log"}].map(s => (
+          <button key={s.id} onClick={() => onSegmentChange(s.id)} style={{
+            flex: 1, padding: "8px 0", fontSize: 13, fontWeight: 600,
+            background: s.id === "dial" ? TOK.primary : "transparent",
+            color: s.id === "dial" ? "#0D1117" : TOK.textMuted,
+            border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+          }}>{s.l}</button>
+        ))}
+      </div>
+    </div>
+
+    <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
+      {/* Just-called card */}
+      <Card accent style={{
+        marginBottom: 12, background: TOK.surface,
+        borderColor: TOK.primary, boxShadow: `0 0 0 4px ${TOK.primaryGlow}`,
+        animation: "slideDown 350ms ease",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: TOK.primary, fontWeight: 700, letterSpacing: 0.8, marginBottom: 6 }}>
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: TOK.primary }}/>
+          JUST CALLED · {pharmacy.n.toUpperCase()}
+        </div>
+        <div style={{ fontSize: 11, color: TOK.textDim, marginBottom: 8 }}>I heard:</div>
+        <div style={{ fontSize: 15, lineHeight: 1.4, color: TOK.text, marginBottom: 12 }}>
+          <Status kind="ok" label="In stock" style={{ fontSize: 13, fontWeight: 600, marginRight: 4 }}/>
+          · 20mg XR · arriving <strong style={{ color: TOK.primary }}>Friday</strong>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <Btn variant="success" size="sm" full={false} style={{ flex: 2 }} onClick={onConfirm}>
+            <Icon.check size={16}/> Confirm
+          </Btn>
+          <Btn variant="ghost" size="sm" full={false} style={{ flex: 1 }}>
+            <Icon.edit size={14}/> Edit
+          </Btn>
+          <Btn variant="ghost" size="sm" full={false} style={{ flex: 1 }} onClick={onDiscard}>
+            Discard
+          </Btn>
+        </div>
+      </Card>
+
+      <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, margin: "12px 0 8px" }}>EARLIER TODAY</div>
+      <Card style={{ padding: 0 }}>
+        {PHARMACIES.slice(1, 4).map((p, i) => (
+          <div key={p.id} style={{
+            display: "flex", alignItems: "center", padding: "12px 14px",
+            borderBottom: i < 2 ? `0.5px solid ${TOK.borderSoft}` : "none",
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                {p.v && <Icon.lock size={12} stroke={TOK.vault}/>}
+                {p.n}
+              </div>
+              <div style={{ fontSize: 11, color: TOK.textMuted, marginTop: 2 }}>{p.t}</div>
+            </div>
+            <Status kind={p.k} label={p.label}/>
+          </div>
+        ))}
+      </Card>
+
+      <Btn variant="ghost" style={{ marginTop: 16 }} onClick={() => onCallPharmacy(PHARMACIES[1])}>
+        <Icon.phone size={16}/> Continue hunt — Corner Pharmacy
+      </Btn>
+    </div>
+    <TabBar active="hunt"/>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
+// 7. MAP
+// ═══════════════════════════════════════════════════════════════
+const PINS = [
+  { x: 35, y: 28, c: TOK.success, l: "10m", n: "Westside Pharmacy", reps: 3 },
+  { x: 68, y: 42, c: "#eab308", l: "4h", n: "Mile End Rx", reps: 1 },
+  { x: 28, y: 58, c: TOK.danger, l: "out", n: "Walgreens · Main", reps: 2 },
+  { x: 58, y: 72, c: TOK.textMuted, l: "2d", n: "CVS · Elm", reps: 1 },
+  { x: 78, y: 25, c: TOK.success, l: "30m", n: "Target Rx", reps: 4 },
+];
+
+const MapScreen = ({ onUnlockVault, onContribute }) => {
+  const [filter, setFilter] = React.useState({ logs: false, comm: true, off: true });
+  const [selectedPin, setSelectedPin] = React.useState(null);
+  const [vaultUnlocked, setVaultUnlocked] = React.useState(false);
+  const [showG2G, setShowG2G] = React.useState(false);
+  const handleHeatmap = () => {
+    if (vaultUnlocked) return;
+    setShowG2G(true);
+  };
+  return (
+    <div data-screen-label="06 Map" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ padding: "4px 16px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+          <h1 style={{ fontSize: 30, fontWeight: 700, margin: "8px 0 0", letterSpacing: -0.6 }}>Map</h1>
+          <span style={{ fontSize: 12, color: TOK.textMuted }}>92706 · 5mi</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {[
+            { id: "logs", l: "My Logs" },
+            { id: "comm", l: "Community" },
+            { id: "off", l: "Official" },
+          ].map(f => (
+            <button key={f.id} onClick={() => setFilter(s => ({ ...s, [f.id]: !s[f.id] }))} style={{
+              flex: 1, padding: "7px 0", fontSize: 12, fontWeight: 600,
+              border: `1px solid ${filter[f.id] ? TOK.primary : TOK.border}`,
+              background: filter[f.id] ? TOK.primaryDim : "transparent",
+              color: filter[f.id] ? TOK.primary : TOK.textMuted,
+              borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+            }}>{f.l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Map area */}
+      <div style={{ flex: 1, margin: "0 16px 12px", borderRadius: 16, position: "relative", overflow: "hidden", background: "#0a0e14", border: `1px solid ${TOK.border}` }}>
+        {/* fake map grid */}
+        <div style={{
+          position: "absolute", inset: 0,
+          backgroundImage: "linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)",
+          backgroundSize: "32px 32px",
+        }}/>
+        <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
+          <path d="M 0 60% Q 30% 40% 60% 70% T 100% 50%" stroke="#1f2530" strokeWidth="3" fill="none"/>
+          <path d="M 30% 0 Q 35% 40% 30% 100%" stroke="#1f2530" strokeWidth="3" fill="none"/>
+          <path d="M 70% 0 Q 65% 50% 75% 100%" stroke="#1f2530" strokeWidth="3" fill="none"/>
+        </svg>
+
+        {PINS.map((p, i) => (
+          <button key={i} onClick={() => setSelectedPin(p)} style={{
+            position: "absolute", left: `${p.x}%`, top: `${p.y}%`,
+            transform: "translate(-50%, -100%)",
+            background: "none", border: "none", cursor: "pointer", padding: 0,
+          }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: "50% 50% 50% 0",
+              transform: "rotate(-45deg)", background: p.c, border: "2px solid #0D1117",
+              boxShadow: `0 2px 8px ${p.c}80`,
+            }}/>
+            <div style={{
+              position: "absolute", top: 26, left: "50%", transform: "translateX(-50%)",
+              fontSize: 9, padding: "2px 6px", borderRadius: 4,
+              background: TOK.surface, color: p.c, fontWeight: 600,
+              whiteSpace: "nowrap", border: `1px solid ${p.c}`,
+            }}>{p.l}</div>
+          </button>
+        ))}
+
+        {/* heatmap toggle */}
+        <button onClick={handleHeatmap} style={{
+          position: "absolute", top: 12, right: 12,
+          background: vaultUnlocked ? TOK.vaultDim : TOK.surface,
+          border: `1px solid ${TOK.vault}`,
+          color: TOK.vault, borderRadius: 10, padding: "8px 10px",
+          display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
+          cursor: "pointer", fontFamily: "inherit",
+        }}>
+          {vaultUnlocked ? <Icon.spark size={13} stroke={TOK.vault}/> : <Icon.lock size={13} stroke={TOK.vault}/>}
+          Heatmap
+        </button>
+
+        {/* Contribute FAB */}
+        <button onClick={onContribute} style={{
+          position: "absolute", top: 12, left: 12,
+          background: TOK.surface, border: `1px solid ${TOK.primary}`,
+          color: TOK.primary, borderRadius: 10, padding: "8px 10px",
+          display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600,
+          cursor: "pointer", fontFamily: "inherit",
+        }}>
+          <Icon.plus size={13} stroke={TOK.primary}/> Report
+        </button>
+
+        {/* Heatmap overlay (when unlocked) */}
+        {vaultUnlocked && (
+          <div style={{
+            position: "absolute", inset: 0, pointerEvents: "none",
+            background: "radial-gradient(circle at 35% 28%, rgba(34,197,94,0.25), transparent 18%), radial-gradient(circle at 78% 25%, rgba(34,197,94,0.25), transparent 18%), radial-gradient(circle at 68% 42%, rgba(234,179,8,0.22), transparent 16%), radial-gradient(circle at 28% 58%, rgba(239,68,68,0.22), transparent 14%)",
+            mixBlendMode: "screen",
+          }}/>
+        )}
+
+        {/* Give-to-get prompt */}
+        {showG2G && (
+          <div style={{ position: "absolute", inset: 0, background: "rgba(13,17,23,0.85)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <Card style={{ borderColor: TOK.vault, background: TOK.surface, padding: 18, width: "100%", maxWidth: 320 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: TOK.vault, fontWeight: 700, fontSize: 11, letterSpacing: 0.8 }}>
+                <Icon.lock size={14} stroke={TOK.vault}/> COMMUNITY HEATMAP
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Give to get</div>
+              <div style={{ fontSize: 13, color: TOK.textMuted, lineHeight: 1.5, marginBottom: 14 }}>
+                Log <strong style={{ color: TOK.vault }}>1 verified call</strong> from your hunt this week to unlock the community heatmap for 7 days. Your data stays anonymous.
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn variant="ghost" size="sm" full={false} style={{ flex: 1 }} onClick={() => setShowG2G(false)}>Later</Btn>
+                <Btn variant="primary" size="sm" full={false} style={{ flex: 2, background: TOK.vault, borderColor: TOK.vault }} onClick={() => { setShowG2G(false); if (onContribute) onContribute(); }}>
+                  <Icon.share size={14} stroke="#0D1117"/> Contribute to unlock
+                </Btn>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* legend */}
+        <div style={{
+          position: "absolute", bottom: 12, left: 12, right: 12,
+          background: "rgba(22,27,34,0.9)", backdropFilter: "blur(8px)",
+          border: `1px solid ${TOK.borderSoft}`, borderRadius: 10, padding: "8px 12px",
+          display: "flex", justifyContent: "space-between", fontSize: 10, color: TOK.textMuted, fontWeight: 500,
+        }}>
+          <span>● <span style={{ color: TOK.success }}>fresh</span></span>
+          <span>● <span style={{ color: "#eab308" }}>2-24h</span></span>
+          <span>● <span style={{ color: TOK.textMuted }}>old</span></span>
+          <span>● <span style={{ color: TOK.danger }}>out</span></span>
+        </div>
+
+        {/* Pin sheet */}
+        {selectedPin && (
+          <div style={{
+            position: "absolute", left: 0, right: 0, bottom: 0,
+            background: TOK.surface, borderTop: `1px solid ${TOK.border}`,
+            borderRadius: "16px 16px 0 0", padding: 16,
+            animation: "slideUp 250ms ease",
+          }}>
+            <div style={{ width: 40, height: 4, background: TOK.border, borderRadius: 2, margin: "0 auto 12px" }}/>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600 }}>{selectedPin.n}</div>
+                <div style={{ fontSize: 11, color: TOK.textMuted, marginTop: 2 }}>0.7mi · community</div>
+              </div>
+              <Badge kind="success">Verified {selectedPin.l}</Badge>
+            </div>
+            <div style={{ fontSize: 13, color: TOK.text, padding: "10px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, marginBottom: 12 }}>
+              20mg XR reported in stock by <span style={{ color: TOK.primary, fontWeight: 600 }}>{selectedPin.reps} contributors</span>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn variant="primary" size="sm" full={false} style={{ flex: 2 }}>
+                <Icon.phone size={15}/> Call now
+              </Btn>
+              <Btn variant="ghost" size="sm" full={false} style={{ flex: 1 }} onClick={() => setSelectedPin(null)}>Close</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+      <TabBar active="map"/>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PROFILE — vault, streak, contribution stats
+// ═══════════════════════════════════════════════════════════════
+const Profile = ({ onEditMeds, onAddPharmacy, onContribute, onLogRefill }) => (
+  <div data-screen-label="07 Profile" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px 16px" }}>
+      <h1 style={{ fontSize: 30, fontWeight: 700, margin: "8px 0 16px", letterSpacing: -0.6 }}>Me</h1>
+
+      <Card style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 52, height: 52, borderRadius: 999, background: TOK.surface2, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon.user size={24} stroke={TOK.textMuted}/>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Alex Chen</div>
+          <div style={{ fontSize: 12, color: TOK.textMuted }}>Adderall XR · 20mg · 30/mo</div>
+        </div>
+        <Badge kind="primary">Contributor</Badge>
+      </Card>
+
+      {/* Streak + contribution stats row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+        <Card style={{ padding: "12px 10px", textAlign: "center" }}>
+          <Icon.flame size={20} stroke={TOK.primary}/>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: TOK.primary }}>7</div>
+          <div style={{ fontSize: 10, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.4, marginTop: 2 }}>DAY STREAK</div>
+        </Card>
+        <Card style={{ padding: "12px 10px", textAlign: "center" }}>
+          <Icon.share size={20} stroke={TOK.success}/>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: TOK.success }}>23</div>
+          <div style={{ fontSize: 10, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.4, marginTop: 2 }}>CONTRIBUTED</div>
+        </Card>
+        <Card style={{ padding: "12px 10px", textAlign: "center" }}>
+          <Icon.trophy size={20} stroke={TOK.vault}/>
+          <div style={{ fontSize: 22, fontWeight: 700, marginTop: 4, color: TOK.vault }}>L3</div>
+          <div style={{ fontSize: 10, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.4, marginTop: 2 }}>SCOUT TIER</div>
+        </Card>
+      </div>
+
+      {/* Vault card */}
+      <Card style={{ marginBottom: 16, background: TOK.vaultDim, borderColor: "rgba(139,92,246,0.4)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: TOK.vault, fontWeight: 700, letterSpacing: 0.6 }}>
+            <Icon.lock size={13} stroke={TOK.vault}/> VAULT
+          </div>
+          <Badge kind="vault">Locked</Badge>
+        </div>
+        <div style={{ fontSize: 14, color: TOK.text, lineHeight: 1.4, marginBottom: 10 }}>1 pharmacy stored privately · last unlocked Mon</div>
+        <Btn variant="outline" size="sm" style={{ borderColor: TOK.vault, color: TOK.vault }}><Icon.faceid size={14} stroke={TOK.vault}/> Unlock with Face ID</Btn>
+      </Card>
+
+      <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, margin: "8px 0 8px" }}>SETTINGS</div>
+      <Card style={{ padding: 0 }}>
+        {[
+          { l: "Medications", v: "1 active · Adderall XR", onClick: onEditMeds },
+          { l: "Refill setup", v: "30 days · last fill Apr 12", onClick: onLogRefill },
+          { l: "Pharmacies", v: "5 saved · 1 vaulted", onClick: onAddPharmacy },
+          { l: "Community contributions", v: "23 reports · Tier L3", onClick: onContribute },
+          { l: "Notifications", v: "Quiet 10p–8a" },
+          { l: "Privacy & Vault", v: "Face ID required" },
+          { l: "Subscription", v: "Free", last: true },
+        ].map((r, i, arr) => (
+          <div key={i} onClick={r.onClick} style={{
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "14px", borderBottom: i < arr.length - 1 ? `0.5px solid ${TOK.borderSoft}` : "none",
+            cursor: r.onClick ? "pointer" : "default",
+          }}>
+            <div style={{ fontSize: 15 }}>{r.l}</div>
+            <div style={{ fontSize: 12, color: TOK.textMuted }}>{r.v} ›</div>
+          </div>
+        ))}
+      </Card>
+    </div>
+    <TabBar active="me"/>
+  </div>
+);
+
+Object.assign(window, { Dashboard, Dialer, PreFlight, ActiveCall, PostCall, MapScreen, Profile, PHARMACIES });
+
+// MedScout hi-fi — additional screens (onboarding, vault, notification, polished post-call etc.)
+
+// ═══════════════════════════════════════════════════════════════
+// ADHD MEDICATION CATALOG — current US-prescribed meds (2025/26)
+// ═══════════════════════════════════════════════════════════════
+const ADHD_MEDS = [
+  // ─── Amphetamine-class stimulants ───
+  { brand: "Adderall",     form: "IR",       generic: "mixed amphetamine salts",     cls: "stim-amp", doses: ["5mg","7.5mg","10mg","12.5mg","15mg","20mg","30mg"] },
+  { brand: "Adderall XR",  form: "ER cap",   generic: "mixed amphetamine salts",     cls: "stim-amp", doses: ["5mg","10mg","15mg","20mg","25mg","30mg"] },
+  { brand: "Mydayis",      form: "ER cap",   generic: "mixed amphetamine salts",     cls: "stim-amp", doses: ["12.5mg","25mg","37.5mg","50mg"] },
+  { brand: "Vyvanse",      form: "cap",      generic: "lisdexamfetamine",            cls: "stim-amp", doses: ["10mg","20mg","30mg","40mg","50mg","60mg","70mg"] },
+  { brand: "Vyvanse",      form: "chewable", generic: "lisdexamfetamine",            cls: "stim-amp", doses: ["10mg","20mg","30mg","40mg","50mg","60mg"] },
+  { brand: "Dexedrine",    form: "IR",       generic: "dextroamphetamine",           cls: "stim-amp", doses: ["5mg","10mg"] },
+  { brand: "Dexedrine",    form: "Spansule", generic: "dextroamphetamine ER",        cls: "stim-amp", doses: ["5mg","10mg","15mg"] },
+  { brand: "Zenzedi",      form: "IR",       generic: "dextroamphetamine",           cls: "stim-amp", doses: ["2.5mg","5mg","7.5mg","10mg","15mg","20mg","30mg"] },
+  { brand: "Evekeo",       form: "IR",       generic: "amphetamine sulfate",         cls: "stim-amp", doses: ["5mg","10mg"] },
+  { brand: "Evekeo ODT",   form: "ODT",      generic: "amphetamine sulfate",         cls: "stim-amp", doses: ["5mg","10mg","15mg","20mg"] },
+  { brand: "Dyanavel XR",  form: "liquid",   generic: "amphetamine ER",              cls: "stim-amp", doses: ["2.5mg/mL"] },
+  { brand: "Dyanavel XR",  form: "chewable", generic: "amphetamine ER",              cls: "stim-amp", doses: ["5mg","10mg","15mg","20mg"] },
+  { brand: "Adzenys XR-ODT", form: "ODT",    generic: "amphetamine ER",              cls: "stim-amp", doses: ["3.1mg","6.3mg","9.4mg","12.5mg","15.7mg","18.8mg"] },
+  { brand: "Xelstrym",     form: "patch",    generic: "dextroamphetamine TD",        cls: "stim-amp", doses: ["4.5mg","9mg","13.5mg","18mg"] },
+
+  // ─── Methylphenidate-class stimulants ───
+  { brand: "Ritalin",      form: "IR",       generic: "methylphenidate",             cls: "stim-mph", doses: ["5mg","10mg","20mg"] },
+  { brand: "Ritalin LA",   form: "ER cap",   generic: "methylphenidate",             cls: "stim-mph", doses: ["10mg","20mg","30mg","40mg","60mg"] },
+  { brand: "Concerta",     form: "ER tab",   generic: "methylphenidate",             cls: "stim-mph", doses: ["18mg","27mg","36mg","54mg"] },
+  { brand: "Methylin",     form: "IR",       generic: "methylphenidate",             cls: "stim-mph", doses: ["5mg","10mg","20mg"] },
+  { brand: "Metadate CD",  form: "ER cap",   generic: "methylphenidate",             cls: "stim-mph", doses: ["10mg","20mg","30mg","40mg","50mg","60mg"] },
+  { brand: "Metadate ER",  form: "ER tab",   generic: "methylphenidate",             cls: "stim-mph", doses: ["10mg","20mg"] },
+  { brand: "Aptensio XR",  form: "ER cap",   generic: "methylphenidate",             cls: "stim-mph", doses: ["10mg","15mg","20mg","30mg","40mg","50mg","60mg"] },
+  { brand: "Jornay PM",    form: "evening ER", generic: "methylphenidate",           cls: "stim-mph", doses: ["20mg","40mg","60mg","80mg","100mg"] },
+  { brand: "Quillivant XR", form: "liquid",  generic: "methylphenidate",             cls: "stim-mph", doses: ["25mg/5mL"] },
+  { brand: "QuilliChew ER", form: "chewable", generic: "methylphenidate",            cls: "stim-mph", doses: ["20mg","30mg","40mg"] },
+  { brand: "Cotempla XR-ODT", form: "ODT",   generic: "methylphenidate",             cls: "stim-mph", doses: ["8.6mg","17.3mg","25.9mg"] },
+  { brand: "Daytrana",     form: "patch",    generic: "methylphenidate TD",          cls: "stim-mph", doses: ["10mg","15mg","20mg","30mg"] },
+  { brand: "Focalin",      form: "IR",       generic: "dexmethylphenidate",          cls: "stim-mph", doses: ["2.5mg","5mg","10mg"] },
+  { brand: "Focalin XR",   form: "ER cap",   generic: "dexmethylphenidate",          cls: "stim-mph", doses: ["5mg","10mg","15mg","20mg","25mg","30mg","35mg","40mg"] },
+  { brand: "Azstarys",     form: "ER cap",   generic: "serdex/dexmethylphenidate",   cls: "stim-mph", doses: ["26.1/5.2mg","39.2/7.8mg","52.3/10.4mg"] },
+  { brand: "Relexxii",     form: "ER tab",   generic: "methylphenidate",             cls: "stim-mph", doses: ["18mg","27mg","36mg","54mg","63mg","72mg"] },
+
+  // ─── Nonstimulants ───
+  { brand: "Strattera",    form: "cap",      generic: "atomoxetine",                 cls: "non",      doses: ["10mg","18mg","25mg","40mg","60mg","80mg","100mg"] },
+  { brand: "Qelbree",      form: "ER cap",   generic: "viloxazine",                  cls: "non",      doses: ["100mg","150mg","200mg"] },
+  { brand: "Intuniv",      form: "ER tab",   generic: "guanfacine",                  cls: "non",      doses: ["1mg","2mg","3mg","4mg"] },
+  { brand: "Kapvay",       form: "ER tab",   generic: "clonidine",                   cls: "non",      doses: ["0.1mg","0.2mg"] },
+  { brand: "Onyda XR",     form: "liquid",   generic: "clonidine ER",                cls: "non",      doses: ["0.1mg/5mL"] },
+
+  // ─── Generics (commonly dispensed unbranded) ───
+  { brand: "Amphetamine salts", form: "IR",       generic: "generic Adderall",           cls: "stim-amp", isGeneric: true, doses: ["5mg","7.5mg","10mg","12.5mg","15mg","20mg","30mg"] },
+  { brand: "Amphetamine salts", form: "ER cap",   generic: "generic Adderall XR",        cls: "stim-amp", isGeneric: true, doses: ["5mg","10mg","15mg","20mg","25mg","30mg"] },
+  { brand: "Lisdexamfetamine",  form: "cap",      generic: "generic Vyvanse",            cls: "stim-amp", isGeneric: true, doses: ["10mg","20mg","30mg","40mg","50mg","60mg","70mg"] },
+  { brand: "Dextroamphetamine", form: "IR",       generic: "generic Dexedrine",          cls: "stim-amp", isGeneric: true, doses: ["5mg","10mg"] },
+  { brand: "Dextroamphetamine", form: "ER cap",   generic: "generic Dexedrine Spansule", cls: "stim-amp", isGeneric: true, doses: ["5mg","10mg","15mg"] },
+  { brand: "Methylphenidate",   form: "IR",       generic: "generic Ritalin",            cls: "stim-mph", isGeneric: true, doses: ["5mg","10mg","20mg"] },
+  { brand: "Methylphenidate",   form: "ER tab",   generic: "generic Concerta",           cls: "stim-mph", isGeneric: true, doses: ["18mg","27mg","36mg","54mg"] },
+  { brand: "Methylphenidate",   form: "ER cap",   generic: "generic Ritalin LA",         cls: "stim-mph", isGeneric: true, doses: ["10mg","20mg","30mg","40mg","60mg"] },
+  { brand: "Methylphenidate",   form: "patch",    generic: "generic Daytrana",           cls: "stim-mph", isGeneric: true, doses: ["10mg","15mg","20mg","30mg"] },
+  { brand: "Dexmethylphenidate", form: "IR",      generic: "generic Focalin",            cls: "stim-mph", isGeneric: true, doses: ["2.5mg","5mg","10mg"] },
+  { brand: "Dexmethylphenidate", form: "ER cap",  generic: "generic Focalin XR",         cls: "stim-mph", isGeneric: true, doses: ["5mg","10mg","15mg","20mg","25mg","30mg","35mg","40mg"] },
+  { brand: "Atomoxetine",       form: "cap",      generic: "generic Strattera",          cls: "non",      isGeneric: true, doses: ["10mg","18mg","25mg","40mg","60mg","80mg","100mg"] },
+  { brand: "Guanfacine",        form: "ER tab",   generic: "generic Intuniv",            cls: "non",      isGeneric: true, doses: ["1mg","2mg","3mg","4mg"] },
+  { brand: "Clonidine",         form: "ER tab",   generic: "generic Kapvay",             cls: "non",      isGeneric: true, doses: ["0.1mg","0.2mg"] },
+];
+
+const CLS_LABELS = {
+  "stim-amp": { label: "Amphetamine", color: "#F97316" },
+  "stim-mph": { label: "Methylphenidate", color: "#3B82F6" },
+  "non":      { label: "Non-stimulant", color: "#22C55E" },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// ONBOARDING — 4-step flow
+// ═══════════════════════════════════════════════════════════════
+const Onboarding = ({ onDone }) => {
+  const [step, setStep] = React.useState(0);
+  const [selectedMed, setSelectedMed] = React.useState(ADHD_MEDS[1]); // Adderall XR default
+  const [dose, setDose] = React.useState("20mg");
+  const [count, setCount] = React.useState(30);
+  const [saved, setSaved] = React.useState(["Walgreens · Main", "Corner Pharmacy"]);
+  const [query, setQuery] = React.useState("");
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const med = `${selectedMed.brand}${selectedMed.form && !selectedMed.brand.includes(selectedMed.form) ? ` (${selectedMed.form})` : ""}`;
+  const [pickerFilter, setPickerFilter] = React.useState("all"); // all | brand | generic
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return ADHD_MEDS.filter(m => {
+      if (pickerFilter === "brand" && m.isGeneric) return false;
+      if (pickerFilter === "generic" && !m.isGeneric) return false;
+      if (!q) return true;
+      return m.brand.toLowerCase().includes(q) ||
+        m.generic.toLowerCase().includes(q) ||
+        m.form.toLowerCase().includes(q);
+    });
+  }, [query, pickerFilter]);
+  const next = () => step < 3 ? setStep(step + 1) : onDone();
+  const titles = ["Welcome", "Your medication", "Save pharmacies", "You're set"];
+  return (
+    <div data-screen-label="00 Onboarding" style={{ display: "flex", flexDirection: "column", height: "100%", padding: "12px 20px 22px" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 22 }}>
+        {[0,1,2,3].map(i => (
+          <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= step ? TOK.primary : TOK.border, transition: "background 200ms" }}/>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>STEP {step + 1} OF 4</div>
+      <h1 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 8px", letterSpacing: -0.6, lineHeight: 1.15 }}>{titles[step]}</h1>
+
+      {step === 0 && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", padding: "0 8px" }}>
+          <div style={{ width: 92, height: 92, borderRadius: 999, background: TOK.primaryDim, border: `2px solid ${TOK.primary}`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+            <Icon.pill size={46} stroke={TOK.primary}/>
+          </div>
+          <div style={{ fontSize: 16, color: TOK.text, lineHeight: 1.5, marginBottom: 14 }}>Find your meds without the dread.</div>
+          <div style={{ fontSize: 13, color: TOK.textMuted, lineHeight: 1.5 }}>MedScout helps you call pharmacies efficiently, log results, and find stock from the community — without sharing more than you want to.</div>
+        </div>
+      )}
+
+      {step === 1 && !pickerOpen && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ fontSize: 14, color: TOK.textMuted, marginBottom: 22 }}>What are you tracking? You can add more later.</div>
+          <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>MEDICATION</div>
+          <button onClick={() => setPickerOpen(true)} style={{ width: "100%", padding: "12px 14px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10, color: TOK.text, fontSize: 15, fontFamily: "inherit", marginBottom: 16, boxSizing: "border-box", textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>{selectedMed.brand}<span style={{ color: TOK.textMuted, fontWeight: 500 }}> · {selectedMed.form}</span></div>
+              <div style={{ fontSize: 11, color: TOK.textDim }}>{selectedMed.generic}</div>
+            </div>
+            <Icon.search size={16} stroke={TOK.textMuted}/>
+          </button>
+          <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>DOSE</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {selectedMed.doses.map(d => (
+              <button key={d} onClick={() => setDose(d)} style={{ padding: "9px 14px", fontSize: 13, fontWeight: 600, border: `1px solid ${dose === d ? TOK.primary : TOK.border}`, background: dose === d ? TOK.primaryDim : "transparent", color: dose === d ? TOK.primary : TOK.textMuted, borderRadius: 10, cursor: "pointer", fontFamily: "inherit" }}>{d}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>SUPPLY</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10 }}>
+            <button onClick={() => setCount(Math.max(1, count - 1))} style={{ width: 32, height: 32, borderRadius: 8, background: TOK.surface2, border: `1px solid ${TOK.border}`, color: TOK.text, cursor: "pointer", fontSize: 18 }}>−</button>
+            <div style={{ flex: 1, textAlign: "center", fontSize: 18, fontWeight: 600 }}>{count} <span style={{ fontSize: 13, color: TOK.textMuted, fontWeight: 400 }}>days/refill</span></div>
+            <button onClick={() => setCount(count + 1)} style={{ width: 32, height: 32, borderRadius: 8, background: TOK.surface2, border: `1px solid ${TOK.border}`, color: TOK.text, cursor: "pointer", fontSize: 18 }}>+</button>
+          </div>
+        </div>
+      )}
+
+      {step === 1 && pickerOpen && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <button onClick={() => setPickerOpen(false)} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 6, display: "flex", fontFamily: "inherit", fontSize: 13 }}>← Back</button>
+            <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6 }}>SELECT MEDICATION</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10, marginBottom: 10 }}>
+            <Icon.search size={16} stroke={TOK.textMuted}/>
+            <input autoFocus value={query} onChange={e => setQuery(e.target.value)} placeholder="Search brand, generic, or form…" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 14, color: TOK.text, fontFamily: "inherit" }}/>
+            {query && <button onClick={() => setQuery("")} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 2, display: "flex" }}><Icon.x size={14}/></button>}
+          </div>
+          <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
+            {[{id:"all",l:"All"},{id:"brand",l:"Brand"},{id:"generic",l:"Generic"}].map(f => (
+              <button key={f.id} onClick={() => setPickerFilter(f.id)} style={{ flex: 1, padding: "7px 0", fontSize: 12, fontWeight: 600, border: `1px solid ${pickerFilter === f.id ? TOK.primary : TOK.border}`, background: pickerFilter === f.id ? TOK.primaryDim : "transparent", color: pickerFilter === f.id ? TOK.primary : TOK.textMuted, borderRadius: 8, cursor: "pointer", fontFamily: "inherit" }}>{f.l}</button>
+            ))}
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", marginRight: -4, paddingRight: 4 }}>
+            {filtered.length === 0 && (
+              <div style={{ textAlign: "center", padding: 32, fontSize: 13, color: TOK.textMuted }}>No matches.<br/><span style={{ fontSize: 11, color: TOK.textDim }}>Try "Concerta" or "atomoxetine"</span></div>
+            )}
+            {filtered.map((m, i) => {
+              const isSel = m.brand === selectedMed.brand && m.form === selectedMed.form;
+              const cl = CLS_LABELS[m.cls];
+              return (
+                <button key={`${m.brand}-${m.form}-${i}`} onClick={() => { setSelectedMed(m); setDose(m.doses[Math.floor(m.doses.length/2)]); setPickerOpen(false); setQuery(""); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", background: isSel ? TOK.primaryDim : TOK.surface, border: `1px solid ${isSel ? TOK.primary : TOK.borderSoft}`, borderRadius: 10, marginBottom: 5, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                  <div style={{ width: 4, height: 36, background: cl.color, borderRadius: 2, flexShrink: 0 }}/>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: TOK.text, marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.brand} <span style={{ color: TOK.textMuted, fontWeight: 500, fontSize: 12 }}>· {m.form}</span></span>
+                      {m.isGeneric && <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.4, color: TOK.textMuted, padding: "2px 5px", borderRadius: 3, border: `1px solid ${TOK.border}`, flexShrink: 0 }}>GENERIC</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: TOK.textDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.generic} · {m.doses.length} dose{m.doses.length > 1 ? "s" : ""}</div>
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.4, color: cl.color, padding: "3px 6px", borderRadius: 4, background: `${cl.color}1f`, flexShrink: 0 }}>{cl.label.toUpperCase()}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 10, color: TOK.textDim, marginTop: 8, textAlign: "center" }}>{filtered.length} of {ADHD_MEDS.length}</div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ fontSize: 14, color: TOK.textMuted, marginBottom: 16 }}>We'll start with pharmacies near 92706. Tap to save.</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10, marginBottom: 12 }}>
+            <Icon.search size={16} stroke={TOK.textMuted}/>
+            <span style={{ flex: 1, fontSize: 13, color: TOK.textMuted }}>Search by name or ZIP</span>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", marginRight: -4, paddingRight: 4 }}>
+            {["Walgreens · Main", "Corner Pharmacy", "Target Rx", "CVS · Elm", "Family Care Rx", "Sav-On · 4th", "Costco Rx"].map(name => {
+              const isSaved = saved.includes(name);
+              return (
+                <div key={name} onClick={() => setSaved(s => isSaved ? s.filter(x => x !== name) : [...s, name])} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: TOK.surface, border: `1px solid ${isSaved ? TOK.primary : TOK.borderSoft}`, borderRadius: 10, marginBottom: 6, cursor: "pointer" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{name}</div>
+                    <div style={{ fontSize: 11, color: TOK.textMuted, marginTop: 2 }}>{(0.4 + Math.random() * 2).toFixed(1)}mi</div>
+                  </div>
+                  {isSaved ? <Icon.check size={18} stroke={TOK.primary}/> : <Icon.plus size={18} stroke={TOK.textMuted}/>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: TOK.textDim, marginTop: 8, textAlign: "center" }}>{saved.length} saved</div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", padding: "0 8px" }}>
+          <div style={{ width: 92, height: 92, borderRadius: 999, background: TOK.successDim, border: `2px solid ${TOK.success}`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24 }}>
+            <Icon.check size={46} stroke={TOK.success}/>
+          </div>
+          <div style={{ fontSize: 18, color: TOK.text, lineHeight: 1.4, marginBottom: 8, fontWeight: 600 }}>{med} · {dose} · {count}-day supply</div>
+          <div style={{ fontSize: 14, color: TOK.textMuted, lineHeight: 1.5, marginBottom: 24 }}>{saved.length} pharmacies saved. We'll remind you 7 days before run-out.</div>
+          <Card style={{ background: TOK.vaultDim, borderColor: "rgba(139,92,246,0.4)", padding: 14, width: "100%", textAlign: "left" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: TOK.vault, fontWeight: 700, letterSpacing: 0.6, marginBottom: 4 }}>
+              <Icon.lock size={13} stroke={TOK.vault}/> VAULT IS PRIVATE
+            </div>
+            <div style={{ fontSize: 12, color: TOK.text, lineHeight: 1.4 }}>Your medication and call logs never leave your device unless you contribute to community.</div>
+          </Card>
+        </div>
+      )}
+
+      <div style={{ marginTop: 18 }}>
+        <Btn variant="primary" size="lg" onClick={next}>{step === 3 ? "Open MedScout" : "Continue"}</Btn>
+        {step > 0 && step < 3 && <Btn variant="ghost" style={{ marginTop: 8 }} onClick={() => setStep(step - 1)}>Back</Btn>}
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// VAULT UNLOCK — Face ID gate
+// ═══════════════════════════════════════════════════════════════
+const VaultUnlock = ({ onUnlock, onCancel }) => {
+  const [state, setState] = React.useState("idle"); // idle | scanning | success
+  const trigger = () => {
+    setState("scanning");
+    setTimeout(() => { setState("success"); setTimeout(onUnlock, 600); }, 1300);
+  };
+  return (
+    <div data-screen-label="08 Vault Unlock" style={{ display: "flex", flexDirection: "column", height: "100%", background: "rgba(13,17,23,0.96)", backdropFilter: "blur(20px)" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px" }}>
+        <button onClick={onCancel} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 6, display: "flex", fontFamily: "inherit", fontSize: 14 }}>Cancel</button>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 32px", textAlign: "center" }}>
+        <div style={{
+          width: 130, height: 130, borderRadius: 28,
+          background: state === "success" ? TOK.successDim : TOK.vaultDim,
+          border: `2px solid ${state === "success" ? TOK.success : TOK.vault}`,
+          display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 28,
+          position: "relative", transition: "all 300ms",
+        }}>
+          {state === "success"
+            ? <Icon.check size={64} stroke={TOK.success}/>
+            : <Icon.faceid size={72} stroke={TOK.vault} sw={1.4}/>}
+          {state === "scanning" && (
+            <div style={{ position: "absolute", inset: -6, borderRadius: 32, border: `2px solid ${TOK.vault}`, animation: "pulse 1.4s ease-in-out infinite" }}/>
+          )}
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, letterSpacing: -0.4 }}>
+          {state === "success" ? "Unlocked" : state === "scanning" ? "Scanning…" : "Unlock Vault"}
+        </div>
+        <div style={{ fontSize: 14, color: TOK.textMuted, lineHeight: 1.5, maxWidth: 280, marginBottom: 32 }}>
+          {state === "idle" && "Confirm your identity to view community pharmacies and contribute reports."}
+          {state === "scanning" && "Hold your phone steady…"}
+          {state === "success" && "Welcome back."}
+        </div>
+        {state === "idle" && (
+          <Btn variant="outline" onClick={trigger} style={{ borderColor: TOK.vault, color: TOK.vault }}>
+            <Icon.faceid size={18} stroke={TOK.vault}/> Use Face ID
+          </Btn>
+        )}
+      </div>
+      <div style={{ padding: "0 32px 32px", textAlign: "center", fontSize: 11, color: TOK.textDim }}>
+        Your vault is encrypted on this device.
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// NOTIFICATION DEEP LINK — lock screen banner that opens pre-flight
+// ═══════════════════════════════════════════════════════════════
+const NotifDeepLink = ({ onTapNotif }) => {
+  const [t, setT] = React.useState(0);
+  React.useEffect(() => { const id = setInterval(() => setT(x => x + 1), 1000); return () => clearInterval(id); }, []);
+  return (
+    <div data-screen-label="09 Notification" style={{ height: "100%", position: "relative", background: "linear-gradient(160deg, #1a1410 0%, #0d0a08 60%, #000 100%)", overflow: "hidden" }}>
+      {/* Time/date */}
+      <div style={{ paddingTop: 50, textAlign: "center", color: "#fff" }}>
+        <div style={{ fontSize: 16, fontWeight: 500, opacity: 0.8 }}>Tuesday, May 6</div>
+        <div style={{ fontSize: 80, fontWeight: 200, marginTop: 4, letterSpacing: -2, lineHeight: 1 }}>9:41</div>
+      </div>
+
+      {/* Notification banner */}
+      <div onClick={onTapNotif} style={{
+        position: "absolute", top: 230, left: 12, right: 12,
+        background: "rgba(28,35,44,0.85)", backdropFilter: "blur(40px)",
+        border: `1px solid rgba(255,255,255,0.08)`, borderRadius: 18,
+        padding: 14, cursor: "pointer",
+        animation: "slideDown 400ms ease",
+      }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: TOK.primary, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon.pill size={20} stroke="#0D1117"/>
+          </div>
+          <div style={{ flex: 1, color: "#fff" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>MedScout</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>now</div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>Walgreens Main is restocking — call now</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 2, lineHeight: 1.35 }}>Community reported 20mg XR back in stock 8 minutes ago. Tap to start your script.</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button onClick={(e) => { e.stopPropagation(); onTapNotif(); }} style={{ flex: 1, padding: "9px 0", fontSize: 13, fontWeight: 600, background: "rgba(255,255,255,0.08)", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Icon.phone size={14} stroke="#fff"/> Call now
+          </button>
+          <button onClick={(e) => e.stopPropagation()} style={{ flex: 1, padding: "9px 0", fontSize: 13, fontWeight: 500, background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.7)", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit" }}>
+            Snooze 30m
+          </button>
+        </div>
+      </div>
+
+      {/* Lock screen footer */}
+      <div style={{ position: "absolute", bottom: 50, left: 0, right: 0, textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        <Icon.lock size={16}/>
+        <div>Swipe up to open</div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// POST-CALL TOAST OVERLAY — sliding bottom toast on confirm
+// ═══════════════════════════════════════════════════════════════
+const PostCallToast = ({ onDismiss }) => (
+  <div style={{ position: "absolute", left: 12, right: 12, bottom: 80, zIndex: 100, animation: "slideUp 350ms ease" }}>
+    <div style={{ background: TOK.surface, border: `1px solid ${TOK.success}`, borderRadius: 14, padding: 14, boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 0 4px rgba(34,197,94,0.15)` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 999, background: TOK.successDim, border: `1px solid ${TOK.success}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Icon.check size={18} stroke={TOK.success}/>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: TOK.text }}>Logged · Walgreens Main</div>
+          <div style={{ fontSize: 12, color: TOK.textMuted }}>Streak +1 · 7 days · contribution +5pts</div>
+        </div>
+        <button onClick={onDismiss} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 4, display: "flex" }}><Icon.x size={16}/></button>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <Btn variant="ghost" size="sm" full={false} style={{ flex: 1, fontSize: 11 }}><Icon.share size={13}/> Share to community</Btn>
+        <Btn variant="ghost" size="sm" full={false} style={{ flex: 1, fontSize: 11 }}><Icon.rotate size={13}/> Refresh insights</Btn>
+      </div>
+    </div>
+  </div>
+);
+
+Object.assign(window, { Onboarding, VaultUnlock, NotifDeepLink, PostCallToast });
+
+// MedScout hi-fi — high-priority detail screens
+// PharmacyDetail · AddPharmacy · Refill · EditMedication · CommunityContribute
+
+// ═══════════════════════════════════════════════════════════════
+// PHARMACY DETAIL
+// ═══════════════════════════════════════════════════════════════
+const PharmacyDetail = ({ pharmacy, onBack, onCall }) => {
+  const p = pharmacy || PHARMACIES[0];
+  const history = [
+    { d: "Tue 2:14p", k: "out", note: "No 20mg; new shipment Friday" },
+    { d: "Fri 11:02a", k: "ok", note: "In stock, 30 ct available" },
+    { d: "Wed 9:30a", k: "soon", note: "Out — restock Monday" },
+    { d: "Mon 4:15p", k: "out", note: "Supplier delay" },
+    { d: "Last week", k: "ok", note: "In stock" },
+  ];
+  return (
+    <div data-screen-label="11 Pharmacy Detail" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px 6px" }}>
+        <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 10, background: TOK.surface, border: `1px solid ${TOK.borderSoft}`, color: TOK.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon.back size={16}/></button>
+        <button style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 6, display: "flex" }}><Icon.share size={18}/></button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 16px" }}>
+        <div style={{ marginBottom: 4, fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6 }}>PHARMACY · 0.4 MI</div>
+        <h1 style={{ fontSize: 26, fontWeight: 700, margin: "4px 0 6px", letterSpacing: -0.4 }}>{p.n}</h1>
+        <div style={{ fontSize: 14, color: TOK.textMuted, marginBottom: 4 }}>(555) 123-4567 · 1421 Main St</div>
+        <Status kind={p.k} label={p.label} style={{ fontSize: 13 }}/>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 16, marginBottom: 18 }}>
+          <Btn variant="primary" size="md" full={false} style={{ flex: 2 }} onClick={() => onCall(p)}>
+            <Icon.phone size={16}/> Call
+          </Btn>
+          <Btn variant="dark" size="md" full={false} style={{ flex: 1 }}><Icon.pin size={15}/> Map</Btn>
+          <Btn variant="dark" size="md" full={false} style={{ flex: 1 }}><Icon.bolt size={15}/> Primary</Btn>
+        </div>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>HOURS</div>
+        <Card style={{ padding: 0, marginBottom: 16 }}>
+          {[
+            { d: "Today (Tue)", h: "8a–10p", open: true },
+            { d: "Wed", h: "8a–10p" },
+            { d: "Thu", h: "8a–10p" },
+            { d: "Fri", h: "8a–9p" },
+            { d: "Sat", h: "9a–6p" },
+            { d: "Sun", h: "10a–5p", last: true },
+          ].map((r, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", borderBottom: !r.last ? `0.5px solid ${TOK.borderSoft}` : "none", fontSize: 13 }}>
+              <span style={{ color: r.open ? TOK.success : TOK.textMuted, fontWeight: r.open ? 600 : 500 }}>{r.d}</span>
+              <span style={{ color: TOK.text }}>{r.h}</span>
+            </div>
+          ))}
+        </Card>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>POLICIES</div>
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13 }}><span style={{ color: TOK.textMuted }}>Holds C-II</span><span style={{ color: TOK.danger, fontWeight: 600 }}>No</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13 }}><span style={{ color: TOK.textMuted }}>Accepts transfers</span><span style={{ color: TOK.success, fontWeight: 600 }}>Yes</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13 }}><span style={{ color: TOK.textMuted }}>Insurance</span><span style={{ color: TOK.text }}>BlueCross, Aetna</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", fontSize: 13 }}><span style={{ color: TOK.textMuted }}>Typical wait</span><span style={{ color: TOK.text }}>15 min</span></div>
+        </Card>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>CALL HISTORY · {history.length}</div>
+        <Card style={{ padding: 0 }}>
+          {history.map((h, i) => (
+            <div key={i} style={{ padding: "11px 14px", borderBottom: i < history.length - 1 ? `0.5px solid ${TOK.borderSoft}` : "none", display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: h.k === "ok" ? TOK.success : h.k === "out" ? TOK.danger : TOK.primary, marginTop: 6, flexShrink: 0 }}/>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12, color: TOK.textMuted, marginBottom: 2 }}>{h.d}</div>
+                <div style={{ fontSize: 13, color: TOK.text }}>{h.note}</div>
+              </div>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// ADD PHARMACY
+// ═══════════════════════════════════════════════════════════════
+const AddPharmacy = ({ onBack, onAdd }) => {
+  const [tab, setTab] = React.useState("search");
+  const [query, setQuery] = React.useState("");
+  const [picked, setPicked] = React.useState([]);
+  const NEAR = [
+    { n: "Walmart Pharmacy", dist: "1.8mi", addr: "3500 W First St" },
+    { n: "Sav-On · 4th", dist: "2.1mi", addr: "120 4th Ave" },
+    { n: "Costco Rx", dist: "2.4mi", addr: "Auto Center Dr" },
+    { n: "Rite Aid · Bristol", dist: "2.9mi", addr: "200 Bristol Pl" },
+    { n: "Vons Pharmacy", dist: "3.2mi", addr: "880 Tustin Ave" },
+    { n: "Ralphs Rx", dist: "3.7mi", addr: "1000 N Main" },
+  ];
+  const filtered = NEAR.filter(p => !query || p.n.toLowerCase().includes(query.toLowerCase()));
+  return (
+    <div data-screen-label="12 Add Pharmacy" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px 0" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", fontSize: 14, fontFamily: "inherit", padding: 4 }}>Cancel</button>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Add Pharmacy</div>
+        <button disabled={picked.length === 0} onClick={() => onAdd(picked)} style={{ background: "none", border: "none", color: picked.length ? TOK.primary : TOK.textDim, cursor: picked.length ? "pointer" : "not-allowed", fontSize: 14, fontWeight: 600, fontFamily: "inherit", padding: 4 }}>Add{picked.length ? ` (${picked.length})` : ""}</button>
+      </div>
+      <div style={{ padding: "12px 16px 0" }}>
+        <div style={{ display: "flex", background: TOK.surface, borderRadius: 10, padding: 3, marginBottom: 12, border: `1px solid ${TOK.borderSoft}` }}>
+          {[{id:"search",l:"Nearby"},{id:"manual",l:"Enter Manually"}].map(s => (
+            <button key={s.id} onClick={() => setTab(s.id)} style={{ flex: 1, padding: "8px 0", fontSize: 13, fontWeight: 600, background: tab === s.id ? TOK.primary : "transparent", color: tab === s.id ? "#0D1117" : TOK.textMuted, border: "none", borderRadius: 8, cursor: "pointer", fontFamily: "inherit" }}>{s.l}</button>
+          ))}
+        </div>
+      </div>
+      {tab === "search" ? (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, padding: "0 16px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10, marginBottom: 10 }}>
+            <Icon.search size={16} stroke={TOK.textMuted}/>
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or ZIP" style={{ flex: 1, background: "transparent", border: "none", outline: "none", fontSize: 14, color: TOK.text, fontFamily: "inherit" }}/>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", marginRight: -4, paddingRight: 4 }}>
+            {filtered.map((p, i) => {
+              const sel = picked.includes(p.n);
+              return (
+                <button key={i} onClick={() => setPicked(s => sel ? s.filter(x => x !== p.n) : [...s, p.n])} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: sel ? TOK.primaryDim : TOK.surface, border: `1px solid ${sel ? TOK.primary : TOK.borderSoft}`, borderRadius: 10, marginBottom: 6, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                  <Icon.pin size={18} stroke={sel ? TOK.primary : TOK.textMuted}/>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: TOK.text }}>{p.n}</div>
+                    <div style={{ fontSize: 11, color: TOK.textDim, marginTop: 2 }}>{p.dist} · {p.addr}</div>
+                  </div>
+                  {sel ? <Icon.check size={18} stroke={TOK.primary}/> : <Icon.plus size={18} stroke={TOK.textMuted}/>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex: 1, padding: "0 16px 16px", overflowY: "auto" }}>
+          {[
+            { l: "NAME", ph: "Corner Pharmacy" },
+            { l: "PHONE", ph: "(555) 123-4567" },
+            { l: "ADDRESS", ph: "1421 Main St" },
+            { l: "ZIP", ph: "92706" },
+          ].map((f, i) => (
+            <div key={i} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 6 }}>{f.l}</div>
+              <input placeholder={f.ph} style={{ width: "100%", padding: "12px 14px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10, color: TOK.text, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box", outline: "none" }}/>
+            </div>
+          ))}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", marginTop: 4, background: TOK.vaultDim, border: `1px solid rgba(139,92,246,0.4)`, borderRadius: 10 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: TOK.text }}>Vaulted</div>
+              <div style={{ fontSize: 11, color: TOK.textMuted, marginTop: 2 }}>Hide from community contributions</div>
+            </div>
+            <Toggle on={true}/>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// REFILL — log a successful pickup
+// ═══════════════════════════════════════════════════════════════
+const Refill = ({ onBack, onConfirm }) => {
+  const [pharm, setPharm] = React.useState(PHARMACIES[2].n);
+  const [date, setDate] = React.useState("today");
+  const [count, setCount] = React.useState(30);
+  const [notes, setNotes] = React.useState("");
+  return (
+    <div data-screen-label="13 Refill" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px 0" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", fontSize: 14, fontFamily: "inherit", padding: 4 }}>Cancel</button>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Log Refill</div>
+        <div style={{ width: 50 }}/>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px 16px" }}>
+        <Card success style={{ marginBottom: 18, background: TOK.successDim, borderColor: TOK.success, padding: 14, display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ width: 42, height: 42, borderRadius: 999, background: "rgba(34,197,94,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon.check size={22} stroke={TOK.success}/>
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: TOK.text }}>Picked up successfully</div>
+            <div style={{ fontSize: 12, color: TOK.textMuted, marginTop: 2 }}>This resets your ring to {count} days.</div>
+          </div>
+        </Card>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>FILLED AT</div>
+        <Card style={{ padding: 0, marginBottom: 16 }}>
+          {PHARMACIES.slice(0, 4).map((p, i) => (
+            <button key={p.id} onClick={() => setPharm(p.n)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: i < 3 ? `0.5px solid ${TOK.borderSoft}` : "none", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+              <div style={{ width: 18, height: 18, borderRadius: 999, border: `2px solid ${pharm === p.n ? TOK.primary : TOK.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {pharm === p.n && <div style={{ width: 9, height: 9, borderRadius: 999, background: TOK.primary }}/>}
+              </div>
+              <span style={{ flex: 1, fontSize: 14, color: TOK.text }}>{p.n}</span>
+              <span style={{ fontSize: 11, color: TOK.textDim }}>{p.sub.split(" · ")[1]}</span>
+            </button>
+          ))}
+        </Card>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>WHEN</div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+          {[{id:"today",l:"Today"},{id:"yest",l:"Yesterday"},{id:"pick",l:"Pick date"}].map(d => (
+            <button key={d.id} onClick={() => setDate(d.id)} style={{ flex: 1, padding: "10px 0", fontSize: 13, fontWeight: 600, border: `1px solid ${date === d.id ? TOK.primary : TOK.border}`, background: date === d.id ? TOK.primaryDim : "transparent", color: date === d.id ? TOK.primary : TOK.textMuted, borderRadius: 10, cursor: "pointer", fontFamily: "inherit" }}>{d.l}</button>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>DAYS DISPENSED</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10, marginBottom: 16 }}>
+          <button onClick={() => setCount(Math.max(1, count - 1))} style={{ width: 32, height: 32, borderRadius: 8, background: TOK.surface2, border: `1px solid ${TOK.border}`, color: TOK.text, cursor: "pointer", fontSize: 18 }}>−</button>
+          <div style={{ flex: 1, textAlign: "center", fontSize: 18, fontWeight: 600 }}>{count} <span style={{ fontSize: 13, color: TOK.textMuted, fontWeight: 400 }}>days</span></div>
+          <button onClick={() => setCount(count + 1)} style={{ width: 32, height: 32, borderRadius: 8, background: TOK.surface2, border: `1px solid ${TOK.border}`, color: TOK.text, cursor: "pointer", fontSize: 18 }}>+</button>
+        </div>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>NOTES <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span></div>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="e.g. switched to generic, $25 with insurance" style={{ width: "100%", padding: "12px 14px", background: TOK.surface, border: `1px solid ${TOK.border}`, borderRadius: 10, color: TOK.text, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box", outline: "none", resize: "none" }}/>
+
+        <div style={{ marginTop: 18 }}>
+          <Btn variant="success" size="lg" onClick={onConfirm}><Icon.check size={18}/> Confirm refill</Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// EDIT MEDICATION
+// ═══════════════════════════════════════════════════════════════
+const EditMedication = ({ onBack, onAddNew }) => {
+  const meds = [
+    { brand: "Adderall XR", form: "ER cap", dose: "20mg", supply: "30 days", primary: true, active: true },
+    { brand: "Vyvanse", form: "cap", dose: "30mg", supply: "30 days", active: false },
+  ];
+  return (
+    <div data-screen-label="14 Edit Medication" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px 0" }}>
+        <button onClick={onBack} style={{ width: 36, height: 36, borderRadius: 10, background: TOK.surface, border: `1px solid ${TOK.borderSoft}`, color: TOK.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon.back size={16}/></button>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Medications</div>
+        <button onClick={onAddNew} style={{ background: "none", border: "none", color: TOK.primary, cursor: "pointer", padding: 6, display: "flex" }}><Icon.plus size={20}/></button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+        {meds.map((m, i) => (
+          <Card key={i} style={{ marginBottom: 12, padding: 0 }}>
+            <div style={{ padding: 14, borderBottom: `0.5px solid ${TOK.borderSoft}`, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: TOK.text }}>{m.brand}</span>
+                  {m.primary && <Badge kind="primary">Primary</Badge>}
+                  {!m.active && <Badge kind="muted">Inactive</Badge>}
+                </div>
+                <div style={{ fontSize: 12, color: TOK.textMuted }}>{m.form} · {m.dose} · {m.supply}</div>
+              </div>
+              <button style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", padding: 6, display: "flex" }}><Icon.edit size={16}/></button>
+            </div>
+            <div style={{ padding: "8px 14px", display: "flex", gap: 6 }}>
+              {!m.primary && <Btn variant="ghost" size="sm" full={false}>Set primary</Btn>}
+              <Btn variant="ghost" size="sm" full={false}>{m.active ? "Mark inactive" : "Reactivate"}</Btn>
+              <Btn variant="ghost" size="sm" full={false} style={{ color: TOK.danger, borderColor: "rgba(239,68,68,0.3)" }}>Remove</Btn>
+            </div>
+          </Card>
+        ))}
+
+        <Btn variant="outline" size="md" onClick={onAddNew} style={{ marginTop: 8 }}><Icon.plus size={16}/> Add another medication</Btn>
+
+        <div style={{ marginTop: 24, padding: 14, background: TOK.surface, border: `1px solid ${TOK.borderSoft}`, borderRadius: 12 }}>
+          <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 6 }}>WHY ADD MORE?</div>
+          <div style={{ fontSize: 13, color: TOK.textMuted, lineHeight: 1.45 }}>Track multiple meds independently — afternoon booster, sleep aid, or a kid's prescription. Each gets its own ring + hunt list.</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+// COMMUNITY CONTRIBUTE — give-to-unlock
+// ═══════════════════════════════════════════════════════════════
+const CommunityContribute = ({ onBack, onSubmit }) => {
+  const [pharm, setPharm] = React.useState("");
+  const [status, setStatus] = React.useState(null);
+  const [confidence, setConfidence] = React.useState("called");
+  return (
+    <div data-screen-label="15 Contribute" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px 0" }}>
+        <button onClick={onBack} style={{ background: "none", border: "none", color: TOK.textMuted, cursor: "pointer", fontSize: 14, fontFamily: "inherit", padding: 4 }}>Cancel</button>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Contribute</div>
+        <div style={{ width: 50 }}/>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+        <Card style={{ marginBottom: 18, background: TOK.vaultDim, borderColor: "rgba(139,92,246,0.4)", padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: TOK.vault, fontWeight: 700, letterSpacing: 0.6, marginBottom: 6 }}>
+            <Icon.lock size={13} stroke={TOK.vault}/> GIVE-TO-GET
+          </div>
+          <div style={{ fontSize: 13, color: TOK.text, lineHeight: 1.45 }}>
+            Share one stock report → unlock the community heatmap for <strong style={{ color: TOK.vault }}>24 hours</strong>. Your name and meds stay private.
+          </div>
+        </Card>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>WHICH PHARMACY?</div>
+        <Card style={{ padding: 0, marginBottom: 16 }}>
+          {PHARMACIES.slice(0, 3).map((p, i) => (
+            <button key={p.id} onClick={() => setPharm(p.n)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: i < 2 ? `0.5px solid ${TOK.borderSoft}` : "none", background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+              <div style={{ width: 18, height: 18, borderRadius: 999, border: `2px solid ${pharm === p.n ? TOK.primary : TOK.border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {pharm === p.n && <div style={{ width: 9, height: 9, borderRadius: 999, background: TOK.primary }}/>}
+              </div>
+              <span style={{ flex: 1, fontSize: 14, color: TOK.text }}>{p.n}</span>
+            </button>
+          ))}
+        </Card>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>WHAT DID YOU FIND?</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          {[
+            { id: "ok", l: "In stock", c: TOK.success },
+            { id: "soon", l: "Restocking soon", c: TOK.primary },
+            { id: "out", l: "Out of stock", c: TOK.danger },
+          ].map(s => (
+            <button key={s.id} onClick={() => setStatus(s.id)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", border: `1px solid ${status === s.id ? s.c : TOK.borderSoft}`, background: status === s.id ? `${s.c}1a` : TOK.surface, borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+              <span style={{ width: 10, height: 10, borderRadius: 999, background: s.c }}/>
+              <span style={{ fontSize: 14, fontWeight: 500, color: status === s.id ? s.c : TOK.text }}>{s.l}</span>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 11, color: TOK.textDim, fontWeight: 600, letterSpacing: 0.6, marginBottom: 8 }}>HOW DID YOU CONFIRM?</div>
+        <div style={{ display: "flex", gap: 6, marginBottom: 18 }}>
+          {[{id:"called",l:"Called"},{id:"visited",l:"In person"},{id:"app",l:"Their app"}].map(c => (
+            <button key={c.id} onClick={() => setConfidence(c.id)} style={{ flex: 1, padding: "9px 4px", fontSize: 12, fontWeight: 600, border: `1px solid ${confidence === c.id ? TOK.primary : TOK.border}`, background: confidence === c.id ? TOK.primaryDim : "transparent", color: confidence === c.id ? TOK.primary : TOK.textMuted, borderRadius: 10, cursor: "pointer", fontFamily: "inherit" }}>{c.l}</button>
+          ))}
+        </div>
+
+        <Card style={{ marginBottom: 16, padding: 12, display: "flex", gap: 10, alignItems: "center" }}>
+          <Icon.lock size={18} stroke={TOK.textMuted}/>
+          <div style={{ flex: 1, fontSize: 12, color: TOK.textMuted, lineHeight: 1.4 }}>
+            We share <strong style={{ color: TOK.text }}>medication class only</strong> — not your specific drug or dose.
+          </div>
+        </Card>
+
+        <Btn variant="primary" size="lg" disabled={!pharm || !status} onClick={onSubmit}>
+          <Icon.spark size={16}/> Submit & unlock heatmap
+        </Btn>
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { PharmacyDetail, AddPharmacy, Refill, EditMedication, CommunityContribute });
+
+// MedScout hi-fi — App orchestrator (state machine, navigation)
+
+const App = () => {
+  // screens: onboard | dashboard | dialer | preflight | active | postcall | map | profile | notif | vault | pharmDetail | addPharm | refill | editMed | contribute
+  const [screen, setScreen] = React.useState("dashboard");
+  const [tab, setTab] = React.useState("home");
+  const [segment, setSegment] = React.useState("dial");
+  const [pharmacy, setPharmacy] = React.useState(PHARMACIES[0]);
+  const [showToast, setShowToast] = React.useState(false);
+  const [pendingVaultCb, setPendingVaultCb] = React.useState(null);
+  const [returnScreen, setReturnScreen] = React.useState("dashboard");
+
+  const onTabChange = (id) => {
+    setTab(id);
+    if (id === "home") setScreen("dashboard");
+    else if (id === "hunt") setScreen("dialer");
+    else if (id === "map") setScreen("map");
+    else if (id === "me") setScreen("profile");
+  };
+
+  const onCallPharmacy = (p) => { setPharmacy(p); setScreen("preflight"); };
+  const onOpenPharmacy = (p) => { setPharmacy(p); setReturnScreen(screen); setScreen("pharmDetail"); };
+  const openModal = (s) => { setReturnScreen(screen); setScreen(s); };
+
+  const handleConfirmPostCall = () => {
+    setScreen("dialer");
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3500);
+  };
+
+  const handleUnlockVault = (cb) => {
+    setPendingVaultCb(() => cb);
+    setScreen("vault");
+  };
+
+  let inner;
+  if (screen === "onboard") {
+    inner = <Onboarding onDone={() => setScreen("dashboard")} />;
+  } else if (screen === "dashboard") {
+    inner = <ScreenWithTab tab="home" onTabChange={onTabChange}><Dashboard onStartHunt={() => { setTab("hunt"); setScreen("dialer"); }} onLogRefill={() => openModal("refill")} onOpenPharmacy={onOpenPharmacy}/></ScreenWithTab>;
+  } else if (screen === "dialer") {
+    inner = (
+      <ScreenWithTab tab="hunt" onTabChange={onTabChange}>
+        <Dialer onCallPharmacy={onCallPharmacy} onAddPharmacy={() => openModal("addPharm")} onOpenPharmacy={onOpenPharmacy} segment={segment} onSegmentChange={setSegment}/>
+        {showToast && <PostCallToast onDismiss={() => setShowToast(false)}/>}
+      </ScreenWithTab>
+    );
+  } else if (screen === "preflight") {
+    inner = <PreFlight pharmacy={pharmacy} onBack={() => setScreen("dialer")} onSkipScript={() => setScreen("active")} onStartCall={() => setScreen("active")} />;
+  } else if (screen === "active") {
+    inner = <ActiveCall pharmacy={pharmacy} onEnd={() => setScreen("postcall")} />;
+  } else if (screen === "postcall") {
+    inner = <ScreenWithTab tab="hunt" onTabChange={onTabChange}><PostCall pharmacy={pharmacy} onConfirm={handleConfirmPostCall} onDiscard={() => setScreen("dialer")} onCallPharmacy={onCallPharmacy} onSegmentChange={setSegment}/></ScreenWithTab>;
+  } else if (screen === "map") {
+    inner = <ScreenWithTab tab="map" onTabChange={onTabChange}><MapScreen onUnlockVault={handleUnlockVault} onContribute={() => openModal("contribute")}/></ScreenWithTab>;
+  } else if (screen === "profile") {
+    inner = <ScreenWithTab tab="me" onTabChange={onTabChange}><Profile onEditMeds={() => openModal("editMed")} onAddPharmacy={() => openModal("addPharm")} onContribute={() => openModal("contribute")} onLogRefill={() => openModal("refill")}/></ScreenWithTab>;
+  } else if (screen === "notif") {
+    inner = <NotifDeepLink onTapNotif={() => { setPharmacy(PHARMACIES[1]); setScreen("preflight"); }}/>;
+  } else if (screen === "vault") {
+    inner = <VaultUnlock onUnlock={() => { if (pendingVaultCb) pendingVaultCb(); setPendingVaultCb(null); setScreen("map"); }} onCancel={() => { setPendingVaultCb(null); setScreen("map"); }}/>;
+  } else if (screen === "pharmDetail") {
+    inner = <PharmacyDetail pharmacy={pharmacy} onBack={() => setScreen(returnScreen)} onCall={onCallPharmacy}/>;
+  } else if (screen === "addPharm") {
+    inner = <AddPharmacy onBack={() => setScreen(returnScreen)} onAdd={() => { setScreen(returnScreen); }}/>;
+  } else if (screen === "refill") {
+    inner = <Refill onBack={() => setScreen(returnScreen)} onConfirm={() => { setScreen(returnScreen); setShowToast(true); setTimeout(() => setShowToast(false), 3500); }}/>;
+  } else if (screen === "editMed") {
+    inner = <EditMedication onBack={() => setScreen(returnScreen)} onAddNew={() => {}}/>;
+  } else if (screen === "contribute") {
+    inner = <CommunityContribute onBack={() => setScreen(returnScreen)} onSubmit={() => { setScreen(returnScreen); }}/>;
+  }
+
+  return (
+    <div style={{
+      width: "100vw", minHeight: "100vh", background: "#1a1a1a",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: "24px 16px", boxSizing: "border-box",
+      fontFamily: "'Lexend', system-ui, sans-serif",
+    }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+        <Phone time={screen === "notif" ? "9:18" : "9:41"}>{inner}</Phone>
+        <FlowNav screen={screen} setScreen={setScreen} />
+      </div>
+    </div>
+  );
+};
+
+const ScreenWithTab = ({ tab, onTabChange, children }) => {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const handle = (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+      const span = btn.querySelector("span");
+      if (!span) return;
+      const label = span.textContent.toLowerCase();
+      if (["home","hunt","map","me"].includes(label)) {
+        e.stopPropagation();
+        onTabChange(label);
+      }
+    };
+    root.addEventListener("click", handle, true);
+    return () => root.removeEventListener("click", handle, true);
+  }, [onTabChange]);
+  return <div ref={ref} style={{ height: "100%" }}>{children}</div>;
+};
+
+const FlowNav = ({ screen, setScreen }) => {
+  const groups = [
+    { l: "Entry", steps: [
+      { id: "notif", l: "Notif" },
+      { id: "onboard", l: "Onboard" },
+    ]},
+    { l: "Core flow", steps: [
+      { id: "dashboard", l: "1·Dashboard" },
+      { id: "dialer", l: "2·Hunt" },
+      { id: "preflight", l: "3·Pre-Flight" },
+      { id: "active", l: "4·Call" },
+      { id: "postcall", l: "5·Post-Call" },
+    ]},
+    { l: "Other", steps: [
+      { id: "map", l: "Map" },
+      { id: "vault", l: "Vault" },
+      { id: "profile", l: "Me" },
+    ]},
+    { l: "Details", steps: [
+      { id: "pharmDetail", l: "Pharmacy" },
+      { id: "addPharm", l: "Add pharm" },
+      { id: "refill", l: "Refill" },
+      { id: "editMed", l: "Meds" },
+      { id: "contribute", l: "Contribute" },
+    ]},
+  ];
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 6,
+      maxWidth: 460, padding: "10px 12px",
+      background: "rgba(22,27,34,0.6)", border: "1px solid #30363D",
+      borderRadius: 14, backdropFilter: "blur(8px)",
+    }}>
+      {groups.map(g => (
+        <div key={g.l} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: 9, color: "#6E7681", fontWeight: 600, letterSpacing: 0.6, width: 60 }}>{g.l.toUpperCase()}</span>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {g.steps.map(s => (
+              <button key={s.id} onClick={() => setScreen(s.id)} style={{
+                padding: "5px 8px", fontSize: 10, fontWeight: 600,
+                background: screen === s.id ? "#F97316" : "transparent",
+                color: screen === s.id ? "#0D1117" : "#8B949E",
+                border: `1px solid ${screen === s.id ? "#F97316" : "#30363D"}`,
+                borderRadius: 6, cursor: "pointer", fontFamily: "'Lexend', system-ui, sans-serif",
+              }}>{s.l}</button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+
+</script>
+</body>
+</html>
