@@ -33,3 +33,13 @@ mobile/ios/
 # Misc
 .DS_Store
 *.log
+
+# OpenClaw agent framework
+.openclaw/
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
+memory/
