@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -13,9 +13,21 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.medscout.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "MedScout records calls so Whisper can transcribe stock status automatically.",
+        "NSSpeechRecognitionUsageDescription": "MedScout uses on-device speech recognition to log call results.",
+        "NSLocationWhenInUseUsageDescription": "MedScout uses your location to find nearby pharmacies.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.medscout.app",
+      "permissions": [
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -25,6 +37,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a1ec53f2-8dbc-4f55-976e-f78b7f88f9c5"
+      }
+    },
+    "owner": "maniacalengineer"
   }
 }
