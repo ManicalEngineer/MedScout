@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import datetime
 
 from database import get_db
-from models import CallLog, CallStatus, Pharmacy, AvailabilityReport, ReportSource, User
+from models import CallLog, CallStatus, Pharmacy, AvailabilityReport, ReportSource, User, SubscriptionTier
 from routers.auth import get_current_user
 
 router = APIRouter()
@@ -18,6 +18,8 @@ class CallLogCreate(BaseModel):
     pharmacy_id: int
     status: CallStatus
     contribute_to_community: bool = False
+    medication_name: Optional[str] = None
+    strength: Optional[str] = None
 
 
 class CallLogUpdate(BaseModel):
@@ -36,9 +38,24 @@ def _call_response(c: CallLog) -> dict:
     }
 
 
-def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User):
+def _resolve_medication(user: User, medication_name: Optional[str], strength: Optional[str]) -> tuple[str, str]:
+    """Use client-supplied medication info, falling back to the first active profile."""
+    if medication_name:
+        return medication_name, strength or ""
+    active = next((p for p in user.medication_profiles if p.is_active), None)
+    if active:
+        return active.medication_name, active.strength
+    return "", ""
+
+
+def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User,
+                      medication_name: str, strength: str):
     """If user opted in and pharmacy isn't vaulted, add a community AvailabilityReport."""
     if not call.contributed_to_community or pharmacy.is_vaulted:
+        return
+    if not medication_name:
+        # A report without a medication can never match a community query — skip it
+        # rather than reward the contributor tier for unusable data.
         return
     report = AvailabilityReport(
         pharmacy_name=pharmacy.name,
@@ -46,8 +63,8 @@ def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User
         latitude=pharmacy.latitude,
         longitude=pharmacy.longitude,
         zip_code=pharmacy.zip_code,
-        medication_name="",
-        strength="",
+        medication_name=medication_name,
+        strength=strength,
         status=call.status,
         source=ReportSource.community,
     )
@@ -96,7 +113,8 @@ def create_call_log(
     db.flush()
 
     if body.contribute_to_community:
-        _maybe_contribute(call, pharmacy, db, current_user)
+        med_name, med_strength = _resolve_medication(current_user, body.medication_name, body.strength)
+        _maybe_contribute(call, pharmacy, db, current_user, med_name, med_strength)
 
     db.commit()
     db.refresh(call)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from pydantic import BaseModel
@@ -9,6 +9,7 @@ from math import radians, cos, sin, asin, sqrt
 from database import get_db
 from models import AvailabilityReport, CallLog, CallStatus, ReportSource, User, SubscriptionTier
 from routers.auth import get_current_user
+from rate_limit import limiter
 
 router = APIRouter()
 
@@ -62,8 +63,8 @@ def _call_as_report(c: CallLog) -> dict:
         "latitude": p.latitude if p else None,
         "longitude": p.longitude if p else None,
         "zip_code": p.zip_code if p else None,
-        "medication_name": c.extracted_strength or "",
-        "strength": c.extracted_strength or "",
+        "medication_name": "",
+        "strength": "",
         "status": c.status.value,
         "source": "my_logs",
         "reported_at": c.called_at,
@@ -112,8 +113,8 @@ def get_map_reports(
             CallLog.user_id == current_user.id,
             CallLog.called_at >= cutoff,
         )
-        if strength:
-            q = q.filter(CallLog.extracted_strength.ilike(f"%{strength}%"))
+        # CallLog stores no medication fields (privacy: transcripts stay on device),
+        # so medication/strength filters don't apply to the user's own logs.
         my_calls = q.order_by(desc(CallLog.called_at)).all()
         if source == "my_logs":
             results = [_call_as_report(c) for c in my_calls]
@@ -148,7 +149,9 @@ def get_map_reports(
 
 
 @router.post("/report", status_code=201)
+@limiter.limit("30/hour")
 def submit_report(
+    request: Request,
     body: ReportCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

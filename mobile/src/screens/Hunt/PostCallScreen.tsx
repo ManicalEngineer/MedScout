@@ -20,14 +20,14 @@ type Route = RouteProp<HuntStackParamList, 'PostCall'>;
 const STATUS_OPTIONS = [
   { id: 'in_stock', label: 'In stock', kind: 'ok' },
   { id: 'out_of_stock', label: 'Out of stock', kind: 'out' },
-  { id: 'back_soon', label: 'Back soon', kind: 'soon' },
+  { id: 'check_back', label: 'Back soon', kind: 'soon' },
   { id: 'unknown', label: 'Unknown', kind: 'muted' },
 ];
 
 function inferStatus(text: string): string | null {
   const lower = text.toLowerCase();
   if (/in stock|we have|yes we do|available|got it|have that/.test(lower)) return 'in_stock';
-  if (/back soon|coming in|restock|thursday|friday|next week|monday|tuesday|wednesday|next shipment/.test(lower)) return 'back_soon';
+  if (/back soon|coming in|restock|thursday|friday|next week|monday|tuesday|wednesday|next shipment/.test(lower)) return 'check_back';
   if (/out of stock|don't have|not available|no stock|out of|cannot fill|can't fill/.test(lower)) return 'out_of_stock';
   return null;
 }

@@ -18,7 +18,7 @@ type Route = RouteProp<HuntStackParamList, 'PharmacyDetail'>;
 const STATUS_MAP: Record<string, { kind: string; label: string }> = {
   in_stock: { kind: 'ok', label: 'In stock' },
   out_of_stock: { kind: 'out', label: 'Out of stock' },
-  back_soon: { kind: 'soon', label: 'Back soon' },
+  check_back: { kind: 'soon', label: 'Back soon' },
   unknown: { kind: 'muted', label: 'Unknown' },
 };
 

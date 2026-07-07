@@ -1,4 +1,4 @@
-import { api, setToken, clearToken } from './client';
+import { api, setToken, clearToken, BASE_URL } from './client';
 
 export interface User {
   id: number;
@@ -7,27 +7,33 @@ export interface User {
   subscription_tier: 'free' | 'contributor' | 'premium';
 }
 
-export async function login(email: string, password: string): Promise<User> {
+interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user_id: number;
+  caregiver_mode: boolean;
+  subscription_tier: 'free' | 'contributor' | 'premium';
+}
+
+export async function login(email: string, password: string): Promise<void> {
   const form = new URLSearchParams({ username: email, password });
-  const res = await fetch('http://localhost:8000/api/v1/auth/login', {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form.toString(),
   });
   if (!res.ok) throw new Error('Invalid credentials');
-  const data = await res.json();
+  const data: TokenResponse = await res.json();
   await setToken(data.access_token);
-  return data.user;
 }
 
-export async function register(email: string, password: string): Promise<User> {
-  const data = await api.post<{ access_token: string; user: User }>(
+export async function register(email: string, password: string): Promise<void> {
+  const data = await api.post<TokenResponse>(
     '/auth/register',
     { email, password },
     false,
   );
   await setToken(data.access_token);
-  return data.user;
 }
 
 export async function logout() {

@@ -1,21 +1,46 @@
+import time
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 import bcrypt
-from pydantic import BaseModel, EmailStr
+import httpx
+from pydantic import BaseModel, EmailStr, Field
 import os
 
 from database import get_db
 from models import User, SubscriptionTier
+from rate_limit import limiter
 
 router = APIRouter()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY or SECRET_KEY == "change-me-in-production":
+    raise RuntimeError(
+        "SECRET_KEY is not set. Generate one with `openssl rand -hex 32` and put it in backend/.env"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+
+OAUTH_PROVIDERS = {
+    "google": {
+        "jwks_url": "https://www.googleapis.com/oauth2/v3/certs",
+        "issuers": {"https://accounts.google.com", "accounts.google.com"},
+        "audience_env": "GOOGLE_OAUTH_CLIENT_ID",
+        "sub_field": "google_sub",
+    },
+    "apple": {
+        "jwks_url": "https://appleid.apple.com/auth/keys",
+        "issuers": {"https://appleid.apple.com"},
+        "audience_env": "APPLE_CLIENT_ID",  # the app's bundle ID for native Sign in with Apple
+        "sub_field": "apple_sub",
+    },
+}
+
+JWKS_CACHE_TTL_SECONDS = 3600
+_jwks_cache: dict[str, tuple[float, dict]] = {}
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -24,14 +49,13 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
     caregiver_mode: bool = False
 
 
 class OAuthRequest(BaseModel):
     provider: str          # "apple" or "google"
     id_token: str
-    email: Optional[str] = None
     caregiver_mode: bool = False
 
 
@@ -75,6 +99,62 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
+def _get_jwks(jwks_url: str, force_refresh: bool = False) -> dict:
+    cached = _jwks_cache.get(jwks_url)
+    if cached and not force_refresh and time.monotonic() - cached[0] < JWKS_CACHE_TTL_SECONDS:
+        return cached[1]
+    try:
+        resp = httpx.get(jwks_url, timeout=10)
+        resp.raise_for_status()
+    except httpx.HTTPError:
+        if cached:
+            return cached[1]
+        raise HTTPException(status_code=503, detail="Could not reach identity provider")
+    jwks = resp.json()
+    _jwks_cache[jwks_url] = (time.monotonic(), jwks)
+    return jwks
+
+
+def _verify_oauth_id_token(provider: str, id_token: str) -> dict:
+    """Verify an Apple/Google id_token (signature, issuer, audience) and return its claims."""
+    config = OAUTH_PROVIDERS.get(provider)
+    if not config:
+        raise HTTPException(status_code=400, detail="provider must be 'apple' or 'google'")
+
+    audience = os.getenv(config["audience_env"], "")
+    if not audience:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{provider} sign-in not configured (set {config['audience_env']})",
+        )
+
+    invalid = HTTPException(status_code=401, detail="Invalid identity token")
+    try:
+        kid = jwt.get_unverified_header(id_token).get("kid")
+    except JWTError:
+        raise invalid
+
+    jwks = _get_jwks(config["jwks_url"])
+    key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+    if key is None:
+        # Provider may have rotated keys since we cached — refresh once
+        jwks = _get_jwks(config["jwks_url"], force_refresh=True)
+        key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+    if key is None:
+        raise invalid
+
+    try:
+        claims = jwt.decode(id_token, key, algorithms=["RS256"], audience=audience)
+    except JWTError:
+        raise invalid
+
+    if claims.get("iss") not in config["issuers"]:
+        raise invalid
+    if not claims.get("sub"):
+        raise invalid
+    return claims
+
+
 def _token_response(user: User) -> TokenResponse:
     return TokenResponse(
         access_token=create_token(user.id),
@@ -87,7 +167,8 @@ def _token_response(user: User) -> TokenResponse:
 # --- Routes ---
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/hour")
+def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
     user = User(
@@ -102,7 +183,8 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form.username).first()
     if not user or not user.hashed_password or not verify_password(form.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -110,30 +192,38 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 
 
 @router.post("/oauth", response_model=TokenResponse)
-def oauth_login(body: OAuthRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_db)):
     """
-    Exchange an Apple or Google id_token for a MedScout session token.
-    Token verification against Apple/Google JWKS is stubbed — integrate
-    apple-auth or google-auth-library in production.
+    Exchange a verified Apple or Google id_token for a MedScout session token.
+    Identity comes exclusively from the verified token claims — the client
+    cannot choose which account it signs into.
     """
-    # TODO: verify id_token with provider's JWKS endpoint
-    # For now, trust the sub claim extracted client-side (dev only)
-    sub_field = "apple_sub" if body.provider == "apple" else "google_sub"
+    claims = _verify_oauth_id_token(body.provider, body.id_token)
+    sub_field = OAUTH_PROVIDERS[body.provider]["sub_field"]
+    sub = claims["sub"]
+    email = claims.get("email")
+    # Google sends a bool; Apple sends the string "true"
+    email_verified = claims.get("email_verified") in (True, "true")
 
-    # Try to find by OAuth sub first, then by email
-    user = None
-    if body.email:
-        user = db.query(User).filter(User.email == body.email).first()
+    user = db.query(User).filter(getattr(User, sub_field) == sub).first()
 
-    if user:
-        setattr(user, sub_field, body.id_token)  # store sub for future lookups
-    else:
-        if not body.email:
-            raise HTTPException(status_code=400, detail="Email required for first-time OAuth sign-in")
+    if not user and email and email_verified:
+        # Link this provider to an existing password/other-provider account
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            setattr(user, sub_field, sub)
+
+    if not user:
+        if not email or not email_verified:
+            raise HTTPException(
+                status_code=400,
+                detail="A verified email is required for first-time OAuth sign-in",
+            )
         user = User(
-            email=body.email,
+            email=email,
             caregiver_mode=body.caregiver_mode,
-            **{sub_field: body.id_token},
+            **{sub_field: sub},
         )
         db.add(user)
 

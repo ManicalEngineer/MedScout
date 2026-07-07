@@ -5,7 +5,7 @@ export interface CallLog {
   pharmacy_id: number;
   pharmacy_name?: string;
   called_at: string;
-  status: 'in_stock' | 'out_of_stock' | 'back_soon' | 'unknown';
+  status: 'in_stock' | 'out_of_stock' | 'check_back' | 'unknown';
   contributed_to_community: boolean;
 }
 
@@ -26,6 +26,8 @@ export function logCall(body: {
   pharmacy_id: number;
   status: string;
   contribute_to_community?: boolean;
+  medication_name?: string;
+  strength?: string;
 }) {
   return api.post<CallLog>('/calls/', body);
 }
