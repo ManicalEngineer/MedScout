@@ -14,11 +14,14 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://localhost:8000/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.medscout.app/api/v1"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.medscout.app/api/v1"
+      }
     }
   },
   "submit": {

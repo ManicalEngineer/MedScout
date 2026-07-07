@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timedelta
 from math import radians, cos, sin, asin, sqrt
@@ -10,25 +10,29 @@ from database import get_db
 from models import AvailabilityReport, CallLog, CallStatus, ReportSource, User, SubscriptionTier
 from routers.auth import get_current_user
 from rate_limit import limiter
+from timeutil import utcnow, ensure_utc
 
 router = APIRouter()
 
 
 # --- Schemas ---
 
+REPORT_MIN_INTERVAL_SECONDS = 60  # per-account gap between reports (anti-poisoning)
+
+
 class ReportCreate(BaseModel):
-    pharmacy_name: str
-    pharmacy_address: Optional[str] = None
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    zip_code: Optional[str] = None
-    medication_name: str
-    strength: str
+    pharmacy_name: str = Field(min_length=1, max_length=200)
+    pharmacy_address: Optional[str] = Field(None, max_length=300)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    zip_code: Optional[str] = Field(None, pattern=r"^\d{5}$")
+    medication_name: str = Field(min_length=1, max_length=120)
+    strength: str = Field(min_length=1, max_length=60)
     status: CallStatus
 
 
 def _trust_level(reported_at: datetime) -> str:
-    age = datetime.utcnow() - reported_at.replace(tzinfo=None)
+    age = utcnow() - ensure_utc(reported_at)
     if age < timedelta(hours=2):
         return "fresh"
     if age < timedelta(hours=24):
@@ -82,7 +86,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def _promote_contributor(user: User, db: Session):
     """Auto-promote to contributor; auto-downgrade if lapsed > 30 days."""
     if user.last_contribution_at:
-        age = datetime.utcnow() - user.last_contribution_at.replace(tzinfo=None)
+        age = utcnow() - ensure_utc(user.last_contribution_at)
         if age < timedelta(days=30) and user.subscription_tier == SubscriptionTier.free:
             user.subscription_tier = SubscriptionTier.contributor
         elif age >= timedelta(days=30) and user.subscription_tier == SubscriptionTier.contributor:
@@ -108,7 +112,7 @@ def get_map_reports(
 
     if source == "my_logs" or source is None:
         # Include user's own call logs
-        cutoff = datetime.utcnow() - timedelta(hours=48)
+        cutoff = utcnow() - timedelta(hours=48)
         q = db.query(CallLog).filter(
             CallLog.user_id == current_user.id,
             CallLog.called_at >= cutoff,
@@ -123,7 +127,7 @@ def get_map_reports(
 
     if source != "my_logs":
         # Community + official reports
-        cutoff = datetime.utcnow() - timedelta(hours=48)
+        cutoff = utcnow() - timedelta(hours=48)
         q = db.query(AvailabilityReport).filter(AvailabilityReport.reported_at >= cutoff)
         if medication_name:
             q = q.filter(AvailabilityReport.medication_name.ilike(f"%{medication_name}%"))
@@ -156,12 +160,22 @@ def submit_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Per-account throttle on top of the per-IP limit. Reports are stored
+    # anonymously, so last_contribution_at is the only per-user signal we keep.
+    if current_user.last_contribution_at:
+        since_last = utcnow() - ensure_utc(current_user.last_contribution_at)
+        if since_last < timedelta(seconds=REPORT_MIN_INTERVAL_SECONDS):
+            raise HTTPException(
+                status_code=429,
+                detail="You're reporting too quickly — try again in a minute.",
+            )
+
     report = AvailabilityReport(
         source=ReportSource.community,
         **body.model_dump(),
     )
     db.add(report)
-    current_user.last_contribution_at = datetime.utcnow()
+    current_user.last_contribution_at = utcnow()
     # Auto-promote contributor tier
     if current_user.subscription_tier == SubscriptionTier.free:
         current_user.subscription_tier = SubscriptionTier.contributor
@@ -192,7 +206,7 @@ def get_heatmap(
             },
         )
 
-    cutoff = datetime.utcnow() - timedelta(days=30)
+    cutoff = utcnow() - timedelta(days=30)
     q = db.query(AvailabilityReport).filter(AvailabilityReport.reported_at >= cutoff)
     if medication_name:
         q = q.filter(AvailabilityReport.medication_name.ilike(f"%{medication_name}%"))

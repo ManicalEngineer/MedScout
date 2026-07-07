@@ -13,9 +13,18 @@ app = FastAPI(title="ADHDBuddy API", version="0.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Browser origins that may call the API (the mobile app sends no Origin header
+# and is unaffected). Comma-separated env override for production.
+import os
+cors_origins = [
+    o.strip() for o in
+    os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

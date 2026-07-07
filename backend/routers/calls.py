@@ -8,6 +8,7 @@ from datetime import datetime
 from database import get_db
 from models import CallLog, CallStatus, Pharmacy, AvailabilityReport, ReportSource, User, SubscriptionTier
 from routers.auth import get_current_user
+from timeutil import utcnow
 
 router = APIRouter()
 
@@ -69,7 +70,7 @@ def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User
         source=ReportSource.community,
     )
     db.add(report)
-    user.last_contribution_at = datetime.utcnow()
+    user.last_contribution_at = utcnow()
     # Auto-promote to contributor tier
     if user.subscription_tier == SubscriptionTier.free:
         user.subscription_tier = SubscriptionTier.contributor
@@ -147,11 +148,23 @@ def update_call_log(
     ).first()
     if not call:
         raise HTTPException(status_code=404, detail="Call log not found")
-    for field, value in body.model_dump(exclude_none=True).items():
-        if field == "contribute_to_community":
-            call.contributed_to_community = value
-        else:
-            setattr(call, field, value)
+
+    if body.contribute_to_community is False and call.contributed_to_community:
+        # Community reports are stored anonymously, so there is no link back
+        # from this call to retract.
+        raise HTTPException(
+            status_code=400,
+            detail="Community contributions are anonymous and can't be withdrawn.",
+        )
+
+    if body.status is not None:
+        call.status = body.status
+
+    if body.contribute_to_community and not call.contributed_to_community:
+        call.contributed_to_community = not call.pharmacy.is_vaulted
+        med_name, med_strength = _resolve_medication(current_user, None, None)
+        _maybe_contribute(call, call.pharmacy, db, current_user, med_name, med_strength)
+
     db.commit()
     db.refresh(call)
     return _call_response(call)

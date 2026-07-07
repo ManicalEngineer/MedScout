@@ -12,6 +12,7 @@ from database import get_db
 from models import Pharmacy, AvailabilityReport, CallStatus, MedicationProfile
 from routers.auth import get_current_user
 from models import User
+from timeutil import utcnow, ensure_utc, UTC_MIN
 
 router = APIRouter()
 
@@ -68,7 +69,7 @@ def _community_stats(
 
     Returns fill_rate, report_count, and a per-week breakdown for the Insights card.
     """
-    cutoff = datetime.utcnow() - timedelta(days=COMMUNITY_REPORT_WINDOW_DAYS)
+    cutoff = utcnow() - timedelta(days=COMMUNITY_REPORT_WINDOW_DAYS)
 
     q = db.query(AvailabilityReport).filter(
         AvailabilityReport.reported_at >= cutoff,
@@ -110,13 +111,13 @@ def _community_stats(
             "weekly_fill_rates": [], "last_report_at": None, "reliability_score": 0.0,
         }
 
-    now = datetime.utcnow()
+    now = utcnow()
     total = len(reports)
     in_stock = sum(1 for r in reports if r.status == CallStatus.in_stock)
     fill_rate = round(in_stock / total, 2)
 
     # Most recent report timestamp
-    last_report_at = max(r.reported_at.replace(tzinfo=None) for r in reports)
+    last_report_at = max(ensure_utc(r.reported_at) for r in reports)
 
     # Reliability score: exponential decay on age so fresh data always dominates.
     # decay=0.1/hr → 24h-old report weighs 9% of a fresh one; 48h weighs <1%.
@@ -129,7 +130,7 @@ def _community_stats(
     for week_offset in range(4):
         week_start = now - timedelta(weeks=week_offset + 1)
         week_end = now - timedelta(weeks=week_offset)
-        week_reports = [r for r in reports if week_start <= r.reported_at.replace(tzinfo=None) <= week_end]
+        week_reports = [r for r in reports if week_start <= ensure_utc(r.reported_at) <= week_end]
         had_stock = any(r.status == CallStatus.in_stock for r in week_reports)
         weekly.append({"week_offset": week_offset + 1, "had_stock": had_stock, "report_count": len(week_reports)})
 
@@ -229,7 +230,7 @@ def list_pharmacies(
             raise HTTPException(status_code=400, detail="lat and lng required for proximity sort")
         items.sort(key=lambda p: p["distance_miles"] if p["distance_miles"] is not None else 9999)
     elif sort_by == "last_called":
-        items.sort(key=lambda p: p["last_call_date"] or datetime.min, reverse=True)
+        items.sort(key=lambda p: ensure_utc(p["last_call_date"]) or UTC_MIN, reverse=True)
     elif sort_by == "community_fill_rate":
         items.sort(
             key=lambda p: p["community_fill_rate"] if p["community_fill_rate"] is not None else -1,

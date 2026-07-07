@@ -13,6 +13,7 @@ import os
 from database import get_db
 from models import User, SubscriptionTier
 from rate_limit import limiter
+from timeutil import utcnow
 
 router = APIRouter()
 
@@ -78,7 +79,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_token(user_id: int) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode({"sub": str(user_id), "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
 

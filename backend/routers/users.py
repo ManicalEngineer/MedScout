@@ -7,6 +7,7 @@ from datetime import date, timedelta, datetime
 from database import get_db
 from models import User, MedicationProfile, RefillCountdown, AlertSettings, SubscriptionTier
 from routers.auth import get_current_user
+from timeutil import utcnow, ensure_utc
 
 router = APIRouter()
 
@@ -85,7 +86,7 @@ def _effective_tier(user: User) -> str:
     if (
         user.subscription_tier == SubscriptionTier.contributor
         and user.last_contribution_at is not None
-        and (datetime.utcnow() - user.last_contribution_at.replace(tzinfo=None)) > timedelta(days=30)
+        and (utcnow() - ensure_utc(user.last_contribution_at)) > timedelta(days=30)
     ):
         return SubscriptionTier.free.value
     return user.subscription_tier.value
