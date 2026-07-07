@@ -73,15 +73,19 @@ def _community_stats(
 
     q = db.query(AvailabilityReport).filter(
         AvailabilityReport.reported_at >= cutoff,
-        func.lower(AvailabilityReport.medication_name).contains(medication_name.lower()),
-        func.lower(AvailabilityReport.strength).contains(strength.lower()),
+        func.lower(AvailabilityReport.medication_name).contains(medication_name.lower(), autoescape=True),
+        func.lower(AvailabilityReport.strength).contains(strength.lower(), autoescape=True),
     )
 
     # Prefer coordinate match; fall back to name+zip
-    if pharmacy.latitude and pharmacy.longitude:
+    if pharmacy.latitude is not None and pharmacy.longitude is not None:
+        # Bounding-box prefilter in SQL (uses the lat/lng indexes) so only a
+        # handful of rows reach the exact haversine check in Python.
+        delta_lat = PROXIMITY_MATCH_KM / 111.0
+        delta_lng = PROXIMITY_MATCH_KM / (111.0 * max(cos(radians(pharmacy.latitude)), 0.01))
         candidates = q.filter(
-            AvailabilityReport.latitude.isnot(None),
-            AvailabilityReport.longitude.isnot(None),
+            AvailabilityReport.latitude.between(pharmacy.latitude - delta_lat, pharmacy.latitude + delta_lat),
+            AvailabilityReport.longitude.between(pharmacy.longitude - delta_lng, pharmacy.longitude + delta_lng),
         ).all()
         reports = [
             r for r in candidates
@@ -92,14 +96,14 @@ def _community_stats(
         if pharmacy.zip_code:
             no_coord = q.filter(
                 AvailabilityReport.latitude.is_(None),
-                func.lower(AvailabilityReport.pharmacy_name).contains(pharmacy.name.lower()),
+                func.lower(AvailabilityReport.pharmacy_name).contains(pharmacy.name.lower(), autoescape=True),
                 AvailabilityReport.zip_code == pharmacy.zip_code,
             ).all()
             seen_ids = {r.id for r in reports}
             reports += [r for r in no_coord if r.id not in seen_ids]
     elif pharmacy.zip_code:
         reports = q.filter(
-            func.lower(AvailabilityReport.pharmacy_name).contains(pharmacy.name.lower()),
+            func.lower(AvailabilityReport.pharmacy_name).contains(pharmacy.name.lower(), autoescape=True),
             AvailabilityReport.zip_code == pharmacy.zip_code,
         ).all()
     else:

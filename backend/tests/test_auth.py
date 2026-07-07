@@ -60,3 +60,23 @@ def test_login_rate_limit(client):
         for _ in range(12)
     ]
     assert 429 in codes
+
+
+def test_refresh_returns_new_valid_token(client):
+    headers = register(client, "a@test.com")
+    r = client.post("/api/v1/auth/refresh", headers=headers)
+    assert r.status_code == 200
+    new_headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    assert client.get("/api/v1/users/me", headers=new_headers).status_code == 200
+
+
+def test_logout_all_revokes_existing_tokens(client):
+    headers = register(client, "a@test.com")
+    assert client.post("/api/v1/auth/logout-all", headers=headers).status_code == 204
+    # The old token carries a stale version and must be rejected
+    assert client.get("/api/v1/users/me", headers=headers).status_code == 401
+    # Fresh login works and yields a working token
+    r = client.post("/api/v1/auth/login", data={"username": "a@test.com", "password": "password123"})
+    assert r.status_code == 200
+    fresh = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    assert client.get("/api/v1/users/me", headers=fresh).status_code == 200

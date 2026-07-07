@@ -10,6 +10,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Status } from '../../components/Status';
 import { Toggle } from '../../components/Toggle';
+import { deleteAsync } from 'expo-file-system/legacy';
 import { logCall } from '../../api/calls';
 import { useWhisper } from '../../hooks/useWhisper';
 import { HuntStackParamList } from '../../navigation/AppNavigator';
@@ -67,6 +68,11 @@ export function PostCallScreen() {
   const autoStatus = transcript ? inferStatus(transcript) : null;
   const effectiveStatus = autoStatus ?? status;
 
+  // Recordings never outlive this screen — deleted on save and on discard
+  const deleteAudio = async () => {
+    if (audioUri) await deleteAsync(audioUri, { idempotent: true }).catch(() => {});
+  };
+
   const confirm = async () => {
     setSaving(true);
     try {
@@ -75,12 +81,18 @@ export function PostCallScreen() {
         status: effectiveStatus,
         contribute_to_community: contribute,
       });
+      await deleteAudio();
       navigation.navigate('HuntMain');
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not save call log');
     } finally {
       setSaving(false);
     }
+  };
+
+  const discard = async () => {
+    await deleteAudio();
+    navigation.navigate('HuntMain');
   };
 
   return (
@@ -185,7 +197,7 @@ export function PostCallScreen() {
         <Button variant="success" size="lg" onPress={confirm} loading={saving || isTranscribing}>
           ✓ {isTranscribing ? 'Transcribing…' : 'Confirm & save'}
         </Button>
-        <Button variant="ghost" size="md" onPress={() => navigation.navigate('HuntMain')} style={{ marginTop: 8 }}>
+        <Button variant="ghost" size="md" onPress={discard} style={{ marginTop: 8 }}>
           Discard
         </Button>
       </View>

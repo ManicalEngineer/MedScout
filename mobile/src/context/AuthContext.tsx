@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { getToken, clearToken } from '../api/client';
-import { getMe, User } from '../api/auth';
+import { getMe, refreshSession, User } from '../api/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!token) { setUser(null); return; }
       const me = await getMe();
       setUser(me);
+      refreshSession(); // fire-and-forget: slides the 7-day session forward
     } catch {
       setUser(null);
     }

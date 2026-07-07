@@ -130,9 +130,9 @@ def get_map_reports(
         cutoff = utcnow() - timedelta(hours=48)
         q = db.query(AvailabilityReport).filter(AvailabilityReport.reported_at >= cutoff)
         if medication_name:
-            q = q.filter(AvailabilityReport.medication_name.ilike(f"%{medication_name}%"))
+            q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
         if strength:
-            q = q.filter(AvailabilityReport.strength.ilike(f"%{strength}%"))
+            q = q.filter(AvailabilityReport.strength.icontains(strength, autoescape=True))
         if source in ("community", "fda", "ashp"):
             q = q.filter(AvailabilityReport.source == source)
         if zip_code:
@@ -209,9 +209,9 @@ def get_heatmap(
     cutoff = utcnow() - timedelta(days=30)
     q = db.query(AvailabilityReport).filter(AvailabilityReport.reported_at >= cutoff)
     if medication_name:
-        q = q.filter(AvailabilityReport.medication_name.ilike(f"%{medication_name}%"))
+        q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
     if strength:
-        q = q.filter(AvailabilityReport.strength.ilike(f"%{strength}%"))
+        q = q.filter(AvailabilityReport.strength.icontains(strength, autoescape=True))
 
     from collections import defaultdict
     zip_data = defaultdict(lambda: {"total": 0, "in_stock": 0})

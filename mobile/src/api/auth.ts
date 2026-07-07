@@ -40,6 +40,23 @@ export async function logout() {
   await clearToken();
 }
 
+/** Slide the 7-day session forward. Called on app launch; failure is fine
+ *  (the current token keeps working until it expires). */
+export async function refreshSession(): Promise<void> {
+  try {
+    const data = await api.post<TokenResponse>('/auth/refresh');
+    await setToken(data.access_token);
+  } catch {
+    // ignore — not worth interrupting the user for
+  }
+}
+
+/** Invalidate every session for this account (all devices), then clear local state. */
+export async function logoutAll(): Promise<void> {
+  await api.post('/auth/logout-all');
+  await clearToken();
+}
+
 export function getMe() {
   return api.get<User>('/users/me');
 }

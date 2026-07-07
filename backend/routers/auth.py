@@ -23,7 +23,8 @@ if not SECRET_KEY or SECRET_KEY == "change-me-in-production":
         "SECRET_KEY is not set. Generate one with `openssl rand -hex 32` and put it in backend/.env"
     )
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+# 7 days; the app slides the session by calling /auth/refresh on launch
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7
 
 OAUTH_PROVIDERS = {
     "google": {
@@ -78,9 +79,10 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
-def create_token(user_id: int) -> str:
+def create_token(user: User) -> str:
     expire = utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    return jwt.encode({"sub": str(user_id), "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+    payload = {"sub": str(user.id), "ver": user.token_version or 0, "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
@@ -92,10 +94,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload.get("sub"))
+        token_version = int(payload.get("ver"))
     except (JWTError, TypeError, ValueError):
         raise credentials_exc
     user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    if not user or token_version != (user.token_version or 0):
         raise credentials_exc
     return user
 
@@ -158,7 +161,7 @@ def _verify_oauth_id_token(provider: str, id_token: str) -> dict:
 
 def _token_response(user: User) -> TokenResponse:
     return TokenResponse(
-        access_token=create_token(user.id),
+        access_token=create_token(user),
         user_id=user.id,
         caregiver_mode=user.caregiver_mode,
         subscription_tier=user.subscription_tier.value,
@@ -183,13 +186,38 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
     return _token_response(user)
 
 
+# Verifying against this when the email doesn't exist keeps login timing
+# constant, so response time can't be used to probe which emails are registered.
+_DUMMY_HASH = hash_password("dummy-timing-equalizer")
+
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form.username).first()
-    if not user or not user.hashed_password or not verify_password(form.password, user.hashed_password):
+    if not user or not user.hashed_password:
+        verify_password(form.password, _DUMMY_HASH)
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not verify_password(form.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     return _token_response(user)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("30/hour")
+def refresh_token(request: Request, current_user: User = Depends(get_current_user)):
+    """Exchange a valid (unexpired, unrevoked) token for a fresh one."""
+    return _token_response(current_user)
+
+
+@router.post("/logout-all", status_code=204)
+def logout_all(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Invalidate every outstanding session for this account."""
+    current_user.token_version = (current_user.token_version or 0) + 1
+    db.commit()
 
 
 @router.post("/oauth", response_model=TokenResponse)

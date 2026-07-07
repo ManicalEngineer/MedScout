@@ -195,6 +195,11 @@ export function PreFlightScreen() {
             {STATUS_LABEL[status]}
           </Button>
         )}
+        <Text style={styles.recordingDisclosure}>
+          Recording stays on your phone, is transcribed on-device, and is deleted
+          after you log the result. Recording laws vary by state — use speakerphone
+          only where you have consent.
+        </Text>
       </View>
     </View>
   );
@@ -258,4 +263,8 @@ const styles = StyleSheet.create({
   },
   statusHint: { fontSize: 13, color: TOK.textMuted, flex: 1 },
   footer: { padding: 18, paddingBottom: 36 },
+  recordingDisclosure: {
+    fontSize: 10, color: TOK.textDim, textAlign: 'center',
+    marginTop: 10, lineHeight: 14,
+  },
 });

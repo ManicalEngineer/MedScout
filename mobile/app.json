@@ -16,7 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.medscout.app",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "MedScout records calls so Whisper can transcribe stock status automatically.",
+        "NSMicrophoneUsageDescription": "MedScout uses the microphone around pharmacy calls so you can dictate the outcome. Audio is transcribed on your device, never uploaded, and deleted after you log the result.",
         "NSSpeechRecognitionUsageDescription": "MedScout uses on-device speech recognition to log call results.",
         "NSLocationWhenInUseUsageDescription": "MedScout uses your location to find nearby pharmacies.",
         "ITSAppUsesNonExemptEncryption": false
