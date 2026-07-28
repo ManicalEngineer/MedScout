@@ -3,14 +3,15 @@
     "name": "mobile",
     "slug": "mobile",
     "version": "1.0.0",
+    "scheme": "medscout",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#14191D"
     },
     "ios": {
       "supportsTablet": true,
@@ -30,10 +31,15 @@
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#31363c"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyB9kekizGDfkrYXs9wc75GpJ5w849EPGnA"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -43,6 +49,14 @@
         "projectId": "a1ec53f2-8dbc-4f55-976e-f78b7f88f9c5"
       }
     },
-    "owner": "maniacalengineer"
+    "owner": "maniacalengineer",
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      "expo-notifications",
+      "./plugins/withFmtConstevalFix.js"
+    ]
   }
 }
