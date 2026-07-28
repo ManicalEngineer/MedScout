@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from 'react';
+import { Alert } from 'react-native';
 import { initWhisper, WhisperContext } from 'whisper.rn';
 import {
   documentDirectory,
@@ -9,6 +10,23 @@ import {
 const MODEL_NAME = 'ggml-tiny.en.bin';
 const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin';
 const MODEL_PATH = `${documentDirectory}${MODEL_NAME}`;
+
+// This only fires once ever per device — after the first successful download,
+// getInfoAsync(MODEL_PATH) short-circuits prepare() below. Asking here (rather
+// than silently spending ~75MB, which could be cellular data) is worth the
+// one-time interruption.
+function confirmDownload(): Promise<boolean> {
+  return new Promise(resolve => {
+    Alert.alert(
+      'Download offline transcription?',
+      'MedScout transcribes your call summary on-device using a ~75MB Whisper model. This downloads once and then works offline. Wi-Fi is recommended to avoid using cellular data.',
+      [
+        { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Download', onPress: () => resolve(true) },
+      ],
+    );
+  });
+}
 
 export type WhisperStatus = 'idle' | 'downloading' | 'loading' | 'ready' | 'transcribing' | 'error';
 
@@ -33,6 +51,11 @@ export function useWhisper(): UseWhisperReturn {
     try {
       const info = await getInfoAsync(MODEL_PATH!);
       if (!info.exists) {
+        const confirmed = await confirmDownload();
+        if (!confirmed) {
+          setStatus('idle');
+          return;
+        }
         setStatus('downloading');
         const dl = createDownloadResumable(
           MODEL_URL,
@@ -55,7 +78,7 @@ export function useWhisper(): UseWhisperReturn {
 
   const transcribeFile = useCallback(async (filePath: string): Promise<string> => {
     if (!ctxRef.current) await prepare();
-    if (!ctxRef.current) throw new Error('Whisper not initialised');
+    if (!ctxRef.current) throw new Error('Transcription model not downloaded');
 
     setStatus('transcribing');
     setTranscribeProgress(0);

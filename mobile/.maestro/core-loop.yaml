@@ -1,0 +1,71 @@
+appId: com.medscout.app
+---
+- launchApp:
+    clearState: true
+- tapOn: "http://localhost:8082"
+- extendedWaitUntil:
+    visible: "Continue"
+    timeout: 15000
+- tapOn: "Continue"
+- tapOn:
+    point: "90%, 48%"
+- tapOn: "Create Account"
+- tapOn:
+    id: "login-email-input"
+- inputText: "maestro-test@medscout.dev"
+- waitForAnimationToEnd
+- tapOn:
+    id: "login-password-input"
+- inputText: "testpass123"
+- tapOn:
+    id: "login-submit-button"
+# Onboarding step 0 (welcome)
+- tapOn: "Continue"
+# Onboarding step 1 (medication) — defaults are fine
+- tapOn: "Continue"
+# Onboarding step 2 (done)
+- tapOn: "Open MedScout"
+- takeScreenshot: hunt-main
+
+# Navigate to Hunt tab, add a pharmacy manually
+- tapOn:
+    id: "tab-hunt"
+- tapOn:
+    id: "add-pharmacy-fab"
+- tapOn: "Add manually"
+- tapOn:
+    id: "manual-pharmacy-name-input"
+- inputText: "Maestro Test Pharmacy"
+- tapOn:
+    id: "manual-pharmacy-phone-input"
+- inputText: "5555551234"
+- tapOn:
+    id: "manual-pharmacy-submit-button"
+- takeScreenshot: pharmacy-added
+- waitForAnimationToEnd
+
+# Open the pharmacy, start a call, skip straight to logging (can't dial a real
+# number from the simulator)
+- tapOn: "Maestro Test Pharmacy.*"
+- tapOn: "☎ Call"
+- tapOn: "Not now"
+- tapOn: ".*End & Log.*"
+- takeScreenshot: postcall-screen
+
+# Log outcome as in stock, contribute to community, save
+- tapOn: "In stock"
+- tapOn:
+    id: "postcall-confirm-button"
+- takeScreenshot: back-to-hunt
+
+# Check the map
+- tapOn:
+    id: "tab-map"
+- takeScreenshot: map-screen
+
+# Regression check: Hunt list should show the pharmacy immediately, not
+# stall on "No pharmacies saved" while location resolves
+- tapOn:
+    id: "tab-hunt"
+- assertVisible: "Maestro Test Pharmacy.*"
+- takeScreenshot: hunt-after-call

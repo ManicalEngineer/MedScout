@@ -12,6 +12,7 @@ export interface Pharmacy {
   sort_order: number;
   last_call_status?: string;
   last_call_date?: string;
+  last_call_expected_date?: string | null;
   distance_miles?: number;
   community_fill_rate?: number;
   community_report_count: number;

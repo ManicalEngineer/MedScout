@@ -23,6 +23,7 @@ interface ButtonProps {
   style?: ViewStyle;
   textStyle?: TextStyle;
   full?: boolean;
+  testID?: string;
 }
 
 export function Button({
@@ -35,12 +36,14 @@ export function Button({
   style,
   textStyle,
   full = true,
+  testID,
 }: ButtonProps) {
   const vs = variantStyles[variant];
   const ss = sizeStyles[size];
 
   return (
     <TouchableOpacity
+      testID={testID}
       onPress={onPress}
       disabled={disabled || loading}
       style={[

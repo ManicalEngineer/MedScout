@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { TOK } from '../../theme/tokens';
@@ -35,24 +36,32 @@ export function HuntScreen() {
   const [showAllPharms, setShowAllPharms] = useState(false);
 
   const load = useCallback(async () => {
+    // Fetch immediately with manual sort — never block the list on GPS, which
+    // can be slow or hang entirely (e.g. no simulated location, poor signal).
+    // A slow/denied location used to leave the whole screen stuck on "No
+    // pharmacies saved" even though the data was fine server-side.
     try {
-      // Try to get location for proximity sort; fall back to manual if denied
-      let lat: number | undefined;
-      let lng: number | undefined;
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        lat = loc.coords.latitude;
-        lng = loc.coords.longitude;
-      }
-
       const [pharms, logs] = await Promise.all([
-        listPharmacies({ sort_by: lat != null ? 'proximity' : 'manual', lat, lng }),
+        listPharmacies({ sort_by: 'manual' }),
         listCallLogs(),
       ]);
       setPharmacies(pharms);
       setCalls(logs);
     } catch { /* silent */ }
+
+    // Upgrade to proximity sort in the background if/when location resolves.
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const pharms = await listPharmacies({
+          sort_by: 'proximity',
+          lat: loc.coords.latitude,
+          lng: loc.coords.longitude,
+        });
+        setPharmacies(pharms);
+      }
+    } catch { /* silent — manual sort from above stands */ }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -64,7 +73,7 @@ export function HuntScreen() {
   };
 
   const callPharmacy = (p: Pharmacy) =>
-    navigation.navigate('PreFlight', { pharmacyId: p.id, pharmacyPhone: p.phone ?? '' });
+    navigation.navigate('ActiveCall', { pharmacyId: p.id, pharmacyName: p.name, pharmacyPhone: p.phone ?? '' });
 
   const formatRelative = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
@@ -73,6 +82,16 @@ export function HuntScreen() {
     if (h < 24) return `${h}h ago`;
     const d = Math.floor(h / 24);
     return d === 1 ? 'Yesterday' : `${d}d ago`;
+  };
+
+  const formatCheckBackDate = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const days = Math.round((d.getTime() - today.getTime()) / 86400000);
+    if (days === 0) return 'today';
+    if (days === 1) return 'tomorrow';
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
   // Top-3: closest pharmacies that have community data, sorted by reliability
@@ -106,7 +125,14 @@ export function HuntScreen() {
             {p.distance_miles != null && p.last_call_date ? ' · ' : ''}
             {p.last_call_date ? formatRelative(p.last_call_date) : ''}
           </Text>
-          {s && <Status kind={s.kind} label={s.label} style={{ marginTop: 4 }} />}
+          {s && (
+            <View style={styles.pharmStatusRow}>
+              <Status kind={s.kind} label={s.label} style={{ marginTop: 4 }} />
+              {p.last_call_status === 'check_back' && p.last_call_expected_date && (
+                <Text style={styles.checkBackDate}>· check back {formatCheckBackDate(p.last_call_expected_date)}</Text>
+              )}
+            </View>
+          )}
         </View>
         <View style={styles.pharmActions}>
           <TouchableOpacity style={styles.callBtn} onPress={() => callPharmacy(p)}>
@@ -114,7 +140,7 @@ export function HuntScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.scriptBtn}
-            onPress={() => navigation.navigate('PreFlight', { pharmacyId: p.id, pharmacyPhone: p.phone ?? '' })}
+            onPress={() => navigation.navigate('ActiveCall', { pharmacyId: p.id, pharmacyName: p.name, pharmacyPhone: p.phone ?? '' })}
           >
             <Text style={styles.scriptBtnIcon}>📋</Text>
           </TouchableOpacity>
@@ -151,7 +177,7 @@ export function HuntScreen() {
             <Text style={styles.fillLabel}>{Math.round(rate * 100)}% fill rate</Text>
           </View>
           {lastReport && (
-            <Text style={styles.recMeta}>{p.community_report_count} reports · last {lastReport}</Text>
+            <Text style={styles.recMeta}>{p.community_report_count} report{p.community_report_count === 1 ? '' : 's'} · last {lastReport}</Text>
           )}
         </View>
       </TouchableOpacity>
@@ -159,7 +185,7 @@ export function HuntScreen() {
   };
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Hunt</Text>
         <Text style={styles.sub}>{pharmacies.length} saved pharmacies</Text>
@@ -243,15 +269,28 @@ export function HuntScreen() {
                   const s = STATUS_MAP[c.status] ?? { kind: 'muted', label: c.status };
                   const leftColor = c.status === 'in_stock' ? TOK.success : c.status === 'out_of_stock' ? TOK.danger : TOK.primary;
                   return (
-                    <Card key={c.id} style={{ ...styles.logCard, borderLeftColor: leftColor, borderLeftWidth: 3 }}>
-                      <View style={styles.logHeader}>
-                        <Text style={styles.logName}>
-                          {pharmacies.find(p => p.id === c.pharmacy_id)?.name ?? `Pharmacy #${c.pharmacy_id}`}
-                        </Text>
-                        <Text style={styles.logTime}>{formatRelative(c.called_at)}</Text>
-                      </View>
-                      <Status kind={s.kind} label={s.label} style={{ marginTop: 4 }} />
-                    </Card>
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => navigation.navigate('PharmacyDetail', { pharmacyId: c.pharmacy_id })}
+                    >
+                      <Card style={{ ...styles.logCard, borderLeftColor: leftColor, borderLeftWidth: 3 }}>
+                        <View style={styles.logHeader}>
+                          <Text style={styles.logName}>
+                            {pharmacies.find(p => p.id === c.pharmacy_id)?.name ?? `Pharmacy #${c.pharmacy_id}`}
+                          </Text>
+                          <Text style={styles.logTime}>{formatRelative(c.called_at)}</Text>
+                        </View>
+                        <View style={styles.logStatusRow}>
+                          <Status kind={s.kind} label={s.label} style={{ marginTop: 4 }} />
+                          {c.status === 'check_back' && c.expected_restock_date && (
+                            <Text style={styles.logCheckBack}>· check back {formatCheckBackDate(c.expected_restock_date)}</Text>
+                          )}
+                        </View>
+                        {c.notes && (
+                          <Text style={styles.logNote} numberOfLines={2}>“{c.notes}”</Text>
+                        )}
+                      </Card>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -266,17 +305,17 @@ export function HuntScreen() {
         )}
       </ScrollView>
 
-      <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddPharmacy')}>
+      <TouchableOpacity testID="add-pharmacy-fab" style={styles.fab} onPress={() => navigation.navigate('AddPharmacy')}>
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: TOK.bg },
   flex: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingTop: 60, paddingBottom: 0 },
+  header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 0 },
   title: { fontSize: 30, fontWeight: '700', color: TOK.text, letterSpacing: -0.6, marginBottom: 2 },
   sub: { fontSize: 13, color: TOK.textMuted, marginBottom: 12 },
   segment: {
@@ -323,6 +362,8 @@ const styles = StyleSheet.create({
   vault: { fontSize: 12 },
   pharmName: { fontSize: 15, fontWeight: '600', color: TOK.text },
   pharmSub: { fontSize: 11, color: TOK.textMuted, marginBottom: 4 },
+  pharmStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  checkBackDate: { fontSize: 11, color: TOK.textMuted, marginTop: 4 },
   pharmActions: { flexDirection: 'row', gap: 8, marginLeft: 8 },
   callBtn: {
     width: 44, height: 44, borderRadius: 10,
@@ -344,6 +385,9 @@ const styles = StyleSheet.create({
   logHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   logName: { fontSize: 14, fontWeight: '600', color: TOK.text },
   logTime: { fontSize: 11, color: TOK.textDim },
+  logStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  logCheckBack: { fontSize: 11, color: TOK.textMuted, marginTop: 4 },
+  logNote: { fontSize: 12, color: TOK.textMuted, fontStyle: 'italic', marginTop: 6 },
   fab: {
     position: 'absolute', right: 20, bottom: 24,
     width: 52, height: 52, borderRadius: 26,
