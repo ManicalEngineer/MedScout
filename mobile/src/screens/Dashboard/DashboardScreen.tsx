@@ -40,12 +40,19 @@ export function DashboardScreen() {
         listPharmacies({}),
         listCallLogs(),
       ]);
-      setCountdown(cds[0] ?? null);
+      const active = profs[0];
+      // Match by the active on-device profile's medication name rather than
+      // just taking the first countdown row — a user can have more than one
+      // (e.g. a stale row from before medication profiles moved on-device),
+      // and blindly picking index 0 would show the wrong one.
+      const matchedCountdown = active
+        ? cds.find(c => c.medication_name === active.medication_name) ?? null
+        : cds[0] ?? null;
+      setCountdown(matchedCountdown);
       setProfiles(profs);
       setPharmacies(pharms);
       setCalls(logs);
 
-      const active = profs[0];
       setShortage(active ? await getShortageStatus(active.medication_name).catch(() => null) : null);
     } catch { /* silent */ }
   }, []);
