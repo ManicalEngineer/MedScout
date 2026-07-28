@@ -11,7 +11,7 @@ import { useCallAndRecord } from '../../hooks/useCallAndRecord';
 import { useWhisper } from '../../hooks/useWhisper';
 import { HuntStackParamList } from '../../navigation/AppNavigator';
 import { getScript } from '../../api/calls';
-import { getActiveProfile, MedicationProfile } from '../../storage/medicationProfiles';
+import { listProfiles, MedicationProfile } from '../../storage/medicationProfiles';
 
 type Nav = NativeStackNavigationProp<HuntStackParamList, 'ActiveCall'>;
 type Route = RouteProp<HuntStackParamList, 'ActiveCall'>;
@@ -31,13 +31,19 @@ export function ActiveCallScreen() {
   const [tone, setTone] = useState('polite');
   const [collapsed, setCollapsed] = useState(false);
   const [scriptText, setScriptText] = useState('');
+  const [profiles, setProfiles] = useState<MedicationProfile[]>([]);
+  // Defaults to the most-recently-added profile; the chip row below lets you
+  // switch when there's more than one tracked medication.
   const [activeProfile, setActiveProfile] = useState<MedicationProfile | null>(null);
   const dotOpacity = useRef(new Animated.Value(1)).current;
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
 
   const { status: callStatus, startCall, finishSummary, cancel } = useCallAndRecord({
     onCallReturned: (audioUri) => {
-      navigation.replace('PostCall', { pharmacyId, audioUri: audioUri ?? undefined });
+      navigation.replace('PostCall', {
+        pharmacyId, audioUri: audioUri ?? undefined,
+        medicationName: activeProfile?.medication_name, strength: activeProfile?.strength,
+      });
     },
   });
   const whisper = useWhisper();
@@ -78,10 +84,14 @@ export function ActiveCallScreen() {
     if (Platform.OS === 'ios') whisper.prepare().catch(() => {});
   }, []);
 
-  // Medication profiles live on-device only — load the active one once so
-  // the script request can send its name/strength/is_child_profile directly.
+  // Medication profiles live on-device only — load them once so the script
+  // request can send name/strength/is_child_profile directly, and so a call
+  // can be attributed to a specific one when more than one is tracked.
   useEffect(() => {
-    getActiveProfile().then(setActiveProfile).catch(() => {});
+    listProfiles().then(profs => {
+      setProfiles(profs);
+      setActiveProfile(profs[0] ?? null);
+    }).catch(() => {});
   }, []);
 
   // Load script
@@ -105,7 +115,10 @@ export function ActiveCallScreen() {
   // Skip recording entirely and go straight to logging the result.
   const skipToLog = async () => {
     if (isRecording) await cancel();
-    navigation.replace('PostCall', { pharmacyId });
+    navigation.replace('PostCall', {
+      pharmacyId,
+      medicationName: activeProfile?.medication_name, strength: activeProfile?.strength,
+    });
   };
 
   const recordLabel = () => {
@@ -147,6 +160,24 @@ export function ActiveCallScreen() {
           <Text style={styles.onCallNote}>MedScout can't hear this part of the call. Come back here when you hang up.</Text>
         )}
       </View>
+
+      {/* Which medication this call is about — only worth asking when
+          there's more than one to choose from. */}
+      {profiles.length > 1 && (
+        <View style={styles.medChipRow}>
+          {profiles.map(p => (
+            <TouchableOpacity
+              key={p.id}
+              style={[styles.medChip, activeProfile?.id === p.id && styles.medChipActive]}
+              onPress={() => setActiveProfile(p)}
+            >
+              <Text style={[styles.medChipText, activeProfile?.id === p.id && styles.medChipTextActive]}>
+                {p.medication_name} · {p.strength}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Script card */}
       {collapsed ? (
@@ -247,6 +278,17 @@ const styles = StyleSheet.create({
   statusDot: { width: 7, height: 7, borderRadius: 3.5 },
   statusText: { fontSize: 13 },
   onCallNote: { fontSize: 11, color: TOK.textMuted, marginTop: 4, textAlign: 'center', paddingHorizontal: 24 },
+  medChipRow: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6,
+    paddingHorizontal: 14, marginBottom: 10,
+  },
+  medChip: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: TOK.border, borderRadius: 999,
+  },
+  medChipActive: { borderColor: TOK.primary, backgroundColor: TOK.primaryDim },
+  medChipText: { fontSize: 12, fontWeight: '600', color: TOK.textMuted },
+  medChipTextActive: { color: TOK.primary },
   scriptPill: {
     marginHorizontal: 14, marginBottom: 10, alignSelf: 'flex-start',
     backgroundColor: TOK.surface, borderWidth: 1, borderColor: TOK.primary,

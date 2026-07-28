@@ -27,7 +27,10 @@ export type RootStackParamList = {
 export type HuntStackParamList = {
   HuntMain: undefined;
   ActiveCall: { pharmacyId: number; pharmacyName: string; pharmacyPhone: string };
-  PostCall: { pharmacyId: number; summary?: string; status?: string; transcript?: string; audioUri?: string };
+  PostCall: {
+    pharmacyId: number; summary?: string; status?: string; transcript?: string; audioUri?: string;
+    medicationName?: string; strength?: string;
+  };
   AddPharmacy: undefined;
   PharmacyDetail: { pharmacyId: number };
 };

@@ -102,7 +102,7 @@ function formatShortDate(d: Date): string {
 export function PostCallScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const { pharmacyId, audioUri } = route.params;
+  const { pharmacyId, audioUri, medicationName, strength } = route.params;
 
   const [status, setStatus] = useState('in_stock');
   const [contribute, setContribute] = useState(true);
@@ -146,15 +146,23 @@ export function PostCallScreen() {
   const confirm = async () => {
     setSaving(true);
     try {
-      // Medication profiles live on-device only — send the active one's
-      // name/strength explicitly rather than relying on a server-side lookup.
-      const activeProfile = await getActiveProfile().catch(() => null);
+      // ActiveCallScreen threads through whichever medication the user
+      // selected for this call (or its default). Fall back to the on-device
+      // active profile only if a caller somehow skipped that (defensive,
+      // shouldn't happen in the normal Hunt flow).
+      let medName = medicationName;
+      let medStrength = strength;
+      if (!medName) {
+        const activeProfile = await getActiveProfile().catch(() => null);
+        medName = activeProfile?.medication_name;
+        medStrength = activeProfile?.strength;
+      }
       await logCall({
         pharmacy_id: pharmacyId,
         status: effectiveStatus,
         contribute_to_community: contribute,
-        medication_name: activeProfile?.medication_name,
-        strength: activeProfile?.strength,
+        medication_name: medName,
+        strength: medStrength,
         expected_restock_date: effectiveStatus === 'check_back' && restockDate ? toISODate(restockDate) : undefined,
         notes: notes.trim() || undefined,
       });

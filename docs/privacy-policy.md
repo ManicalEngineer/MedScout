@@ -21,11 +21,11 @@ When you create or use a MedScout account, we may collect:
 
 ### Medication and health-related information
 
-Your medication profile — medication name, strength, formulation, and whether it relates to a child or dependent (including a child's name, if provided) — is stored **only on your device**. MedScout's servers do not receive, store, or retain this profile.
+You may track more than one medication (for example, a primary and a backup). Each medication profile — name, strength, formulation, and whether it relates to a child or dependent (including a child's name, if provided) — is stored **only on your device**. MedScout's servers do not receive, store, or retain these profiles.
 
 Two narrower pieces of information do reach our servers, tied to your account, only to power features you've turned on:
 
-- **Medication name and strength**, if you set a refill reminder or enable nearby restock alerts — used solely to send you the reminder or alert, and to generate call scripts and refill countdowns you request
+- **Medication name and strength, per medication, only if you explicitly enable restock alerts for that specific medication.** Alerts are off by default for every medication you track — nothing is linked to your account automatically. Before turning one on, the app shows you that doing so links your account to that medication on our server so we can notify you; you can turn it off at any time, independently for each medication. Setting a refill reminder similarly ties that medication's name to your account, solely to send you the reminder.
 - **Pharmacy call results, status, and any notes you add** about a call — kept private and never shared, including with the MedScout community, unless you explicitly choose to contribute a report
 
 Separately, your device may tell us — with no account or identity attached — that a given medication and strength is being tracked by someone, so we know to keep monitoring national shortage status for it. This signal cannot be traced back to you or any account.
@@ -158,7 +158,7 @@ If you enable push notifications, MedScout may use your device's push-notificati
 - Check-back reminders
 - Account or service notifications
 
-You can disable notifications through your device or MedScout settings.
+Medication availability alerts are opt-in on a per-medication basis, off by default — see Section 1. You can disable notifications for any single medication, or entirely, through your device or MedScout settings.
 
 ## 9. Third-Party Services
 
@@ -252,4 +252,4 @@ Before publishing this policy, confirm:
 7. Will the policy apply to both the mobile app and `getmedscout.com`?
 8. Do you want a separate Terms of Service and Community Contribution/Data License agreement?
 
-> **Legal and implementation note:** As of the 2026-07-28 architecture change, medication profiles (medication name, strength, formulation, and any child/dependent info) are stored on-device only and never reach the backend; only medication name/strength sync server-side, either tied to the account (for refill reminders and restock alerts) or fully anonymously with no `user_id` (for shortage tracking). Community stock reports (`AvailabilityReport`) have never had a `user_id` column — they're anonymous by schema design, not by a post-hoc de-identification step, so there's no separate de-identification pipeline to audit; the enforcement is that the identifying column simply doesn't exist. This draft should still be reviewed by a privacy attorney before publication, especially because medication information may constitute sensitive health information depending on the jurisdictions involved.
+> **Legal and implementation note:** As of the 2026-07-28 architecture change, medication profiles (medication name, strength, formulation, and any child/dependent info) are stored on-device only and never reach the backend, and a user may have more than one. Only medication name/strength ever sync server-side, and only in two forms: (1) `MedicationAlertSubscription` — one row per user per medication *explicitly opted into alerts*, added 2026-07-29 to replace an earlier single-medication, opt-out-by-default `AlertSettings` field; existence of a row is the subscription, no separate enabled flag; and (2) `TrackedMedication`, fully anonymous with no `user_id` (for shortage tracking). Community stock reports (`AvailabilityReport`) have never had a `user_id` column — they're anonymous by schema design, not by a post-hoc de-identification step, so there's no separate de-identification pipeline to audit; the enforcement is that the identifying column simply doesn't exist. This draft should still be reviewed by a privacy attorney before publication, especially because medication information may constitute sensitive health information depending on the jurisdictions involved.

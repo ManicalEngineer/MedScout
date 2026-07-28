@@ -34,15 +34,9 @@ export function listRefillCountdowns() {
 }
 
 export interface AlertSettings {
-  enabled: boolean;
   radius_miles: number;
   quiet_hours_start: number;
   quiet_hours_end: number;
-  // Kept in sync with the on-device active medication profile — see
-  // src/storage/medicationProfiles.ts. The server only needs these two
-  // fields (not the full profile) to match restock reports against this user.
-  medication_name?: string;
-  strength?: string;
 }
 
 export function getAlertSettings() {
@@ -51,6 +45,33 @@ export function getAlertSettings() {
 
 export function updateAlertSettings(body: Partial<AlertSettings>) {
   return api.put<AlertSettings>('/users/me/alert-settings', body);
+}
+
+export interface AlertSubscription {
+  medication_name: string;
+  strength: string;
+  consented_at: string;
+}
+
+export function listAlertSubscriptions() {
+  return api.get<AlertSubscription[]>('/users/me/alert-subscriptions');
+}
+
+/** Enabling a subscription links the given medication to this account
+ * server-side — callers should show the user that disclosure before
+ * calling this, not just wire it straight to a toggle. */
+export function subscribeToAlerts(medicationName: string, strength: string) {
+  return api.post<AlertSubscription>('/users/me/alert-subscriptions', {
+    medication_name: medicationName,
+    strength,
+  });
+}
+
+export function unsubscribeFromAlerts(medicationName: string, strength: string) {
+  return api.delete<void>('/users/me/alert-subscriptions', {
+    medication_name: medicationName,
+    strength,
+  });
 }
 
 /** Anonymous upsert feeding FDA shortage ingestion — no user reference is

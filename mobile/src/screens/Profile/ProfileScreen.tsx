@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -8,19 +8,21 @@ import { TOK } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Toggle } from '../../components/Toggle';
+import { ADHD_MEDS, MedicationOption, MedicationPickerFields } from '../../components/MedicationPicker';
 import { useAuth } from '../../context/AuthContext';
 import { deleteAccount, updateMe } from '../../api/auth';
 import {
   getRefillCountdown, updateRefillCountdown, RefillCountdown,
   getAlertSettings, updateAlertSettings, AlertSettings,
+  listAlertSubscriptions, subscribeToAlerts, unsubscribeFromAlerts, AlertSubscription,
 } from '../../api/users';
-import { listProfiles, MedicationProfile, deleteProfile } from '../../storage/medicationProfiles';
+import { listProfiles, createProfile, MedicationProfile, deleteProfile } from '../../storage/medicationProfiles';
 import {
-  registerForPushNotificationsAsync, refreshPushTokenIfPermitted, isPushPermissionUndetermined,
+  registerForPushNotificationsAsync, refreshPushTokenIfPermitted,
 } from '../../services/pushNotifications';
 
 const DEFAULT_ALERT_SETTINGS: AlertSettings = {
-  enabled: true, radius_miles: 10, quiet_hours_start: 22, quiet_hours_end: 8,
+  radius_miles: 10, quiet_hours_start: 22, quiet_hours_end: 8,
 };
 
 function formatHour(hour: number): string {
@@ -39,10 +41,21 @@ export function ProfileScreen() {
   const [daysSupply, setDaysSupply] = useState('30');
   const [saving, setSaving] = useState(false);
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(DEFAULT_ALERT_SETTINGS);
+  const [subscriptions, setSubscriptions] = useState<AlertSubscription[]>([]);
   const pushSyncedRef = useRef(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // "Add another medication" modal state — mirrors OnboardingScreen's
+  // controlled MedicationPickerFields usage.
+  const [addingMed, setAddingMed] = useState(false);
+  const [newMed, setNewMed] = useState<MedicationOption>(ADHD_MEDS[1]);
+  const [newDose, setNewDose] = useState('20mg');
+  const [newSupply, setNewSupply] = useState(30);
+  const [newQuery, setNewQuery] = useState('');
+  const [newPickerOpen, setNewPickerOpen] = useState(false);
+  const [addingSaving, setAddingSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -57,13 +70,74 @@ export function ProfileScreen() {
       setCountdowns(cds);
     } catch { /* silent */ }
     try {
-      const settings = await getAlertSettings();
-      setAlertSettings(settings);
-      await syncPushTokenOnce(settings.enabled);
+      setAlertSettings(await getAlertSettings());
+      setSubscriptions(await listAlertSubscriptions());
     } catch { /* silent */ }
+    syncPushTokenOnce();
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const isSubscribed = (p: MedicationProfile) =>
+    subscriptions.some(s => s.medication_name === p.medication_name && s.strength === p.strength);
+
+  const openAddMedication = () => {
+    setNewMed(ADHD_MEDS[1]);
+    setNewDose('20mg');
+    setNewSupply(30);
+    setNewQuery('');
+    setNewPickerOpen(false);
+    setAddingMed(true);
+  };
+
+  const saveNewMedication = async () => {
+    setAddingSaving(true);
+    try {
+      const profile = await createProfile({ medication_name: newMed.brand, strength: newDose, formulation: newMed.form });
+      await updateRefillCountdown(profile.medication_name, { days_supply: newSupply }).catch(() => {});
+      setAddingMed(false);
+      load();
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Could not save medication');
+    } finally {
+      setAddingSaving(false);
+    }
+  };
+
+  const handleToggleAlert = (profile: MedicationProfile, value: boolean) => {
+    if (!value) {
+      setSubscriptions(s => s.filter(x => !(x.medication_name === profile.medication_name && x.strength === profile.strength)));
+      unsubscribeFromAlerts(profile.medication_name, profile.strength).catch(() => load());
+      return;
+    }
+    Alert.alert(
+      `Enable alerts for ${profile.medication_name}?`,
+      `This links your account to ${profile.medication_name} on our server so we can notify you when it's back in stock nearby. This is the only medication information tied to your identity — everything else stays on this device. Turn it off anytime.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Enable',
+          onPress: async () => {
+            const token = await registerForPushNotificationsAsync();
+            if (!token) {
+              Alert.alert(
+                'Notifications disabled',
+                "MedScout can't send alerts without notification permission. Enable it in Settings to get restock alerts.",
+              );
+              return;
+            }
+            await updateMe({ push_token: token }).catch(() => {});
+            try {
+              const sub = await subscribeToAlerts(profile.medication_name, profile.strength);
+              setSubscriptions(s => [...s, sub]);
+            } catch (e: any) {
+              Alert.alert('Error', e.message || 'Could not enable alerts');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const handleDeleteProfile = (id: string, name: string) => {
     Alert.alert(`Remove ${name}?`, 'This will remove the medication profile from this device.', [
@@ -140,37 +214,16 @@ export function ProfileScreen() {
   };
 
   // Runs once per app session (load() itself re-fires on every screen focus).
-  // If permission was already granted, silently refresh the token (catches
-  // rotation/reinstalls). If never asked yet and alerts are on — which is the
-  // default for every account — prompt now, since arriving at the screen that
-  // visually shows alerts as "on" is a reasonable, contextual moment to ask.
-  // If previously denied, leave it alone; the OS won't re-prompt anyway.
-  const syncPushTokenOnce = async (alertsEnabled: boolean) => {
+  // Nothing is subscribed by default anymore, so there's nothing to eagerly
+  // prompt permission for — that happens contextually in handleToggleAlert
+  // when the user actually turns an alert on. This just silently refreshes
+  // an already-granted token (catches rotation/reinstalls) for anyone with
+  // existing subscriptions.
+  const syncPushTokenOnce = async () => {
     if (pushSyncedRef.current) return;
     pushSyncedRef.current = true;
     const token = await refreshPushTokenIfPermitted();
-    if (token) {
-      await updateMe({ push_token: token }).catch(() => {});
-      return;
-    }
-    if (alertsEnabled && await isPushPermissionUndetermined()) {
-      const promptedToken = await registerForPushNotificationsAsync();
-      if (promptedToken) await updateMe({ push_token: promptedToken }).catch(() => {});
-    }
-  };
-
-  const handleAlertsToggle = async (v: boolean) => {
-    await patchAlertSettings({ enabled: v });
-    if (!v) return;
-    const token = await registerForPushNotificationsAsync();
-    if (token) {
-      await updateMe({ push_token: token }).catch(() => {});
-    } else {
-      Alert.alert(
-        'Notifications disabled',
-        "MedScout can't send alerts without notification permission. Enable it in Settings to get restock alerts.",
-      );
-    }
+    if (token) await updateMe({ push_token: token }).catch(() => {});
   };
 
   const tierColor = user?.subscription_tier === 'contributor' ? TOK.primary
@@ -263,6 +316,16 @@ export function ProfileScreen() {
                 </View>
               </View>
             )}
+
+            <View style={[styles.alertRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 0.5, borderTopColor: TOK.borderSoft }]}>
+              <View style={styles.flex}>
+                <Text style={styles.alertLabel}>Notify when back in stock</Text>
+              </View>
+              <Toggle
+                value={isSubscribed(p)}
+                onValueChange={(v) => handleToggleAlert(p, v)}
+              />
+            </View>
           </Card>
         );
       })}
@@ -273,23 +336,17 @@ export function ProfileScreen() {
         </Card>
       )}
 
-      {/* Alert settings */}
-      <Text style={styles.sectionLabel}>PHARMACY ALERTS</Text>
+      <Button variant="outline" size="sm" onPress={openAddMedication} style={{ marginBottom: 20 }}>
+        + Add another medication
+      </Button>
+
+      {/* Alert settings — radius/quiet-hours apply to every medication
+          you've subscribed to above; nothing to show with zero subscriptions. */}
+      {subscriptions.length > 0 && (
+      <>
+      <Text style={styles.sectionLabel}>ALERT PREFERENCES</Text>
       <Card style={styles.alertCard}>
         <View style={styles.alertRow}>
-          <View style={styles.flex}>
-            <Text style={styles.alertTitle}>Nearby restock alerts</Text>
-            <Text style={styles.alertSub}>Notify me when a saved pharmacy reports back in stock</Text>
-          </View>
-          <Toggle
-            value={alertSettings.enabled}
-            onValueChange={handleAlertsToggle}
-          />
-        </View>
-
-        {alertSettings.enabled && (
-          <>
-            <View style={[styles.alertRow, styles.alertRowBorder]}>
               <Text style={styles.alertLabel}>Radius</Text>
               <View style={styles.stepper}>
                 <TouchableOpacity
@@ -345,9 +402,9 @@ export function ProfileScreen() {
                 </TouchableOpacity>
               </View>
             </View>
-          </>
-        )}
       </Card>
+      </>
+      )}
 
       {/* About */}
       <Text style={styles.sectionLabel}>ABOUT</Text>
@@ -400,6 +457,38 @@ export function ProfileScreen() {
         )}
       </Card>
     </ScrollView>
+
+    <Modal visible={addingMed} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setAddingMed(false)}>
+      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity onPress={() => setAddingMed(false)}>
+            <Text style={styles.modalCancel}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>ADD MEDICATION</Text>
+          <View style={{ width: 50 }} />
+        </View>
+        <View style={styles.flex}>
+          <MedicationPickerFields
+            selectedMed={newMed}
+            dose={newDose}
+            supply={newSupply}
+            query={newQuery}
+            pickerOpen={newPickerOpen}
+            onOpenPicker={() => setNewPickerOpen(true)}
+            onClosePicker={() => setNewPickerOpen(false)}
+            onSelectMed={(m) => { setNewMed(m); setNewDose(m.doses[Math.floor(m.doses.length / 2)]); setNewPickerOpen(false); setNewQuery(''); }}
+            onSelectDose={setNewDose}
+            onSupplyChange={setNewSupply}
+            onQueryChange={setNewQuery}
+          />
+        </View>
+        {!newPickerOpen && (
+          <Button variant="primary" size="lg" onPress={saveNewMedication} loading={addingSaving} style={{ margin: 20 }}>
+            Save
+          </Button>
+        )}
+      </SafeAreaView>
+    </Modal>
     </SafeAreaView>
   );
 }
@@ -453,4 +542,10 @@ const styles = StyleSheet.create({
   dangerLabel: { marginTop: 20, color: TOK.danger },
   dangerCard: { borderColor: TOK.danger, borderWidth: 1 },
   deleteAccountText: { fontSize: 14, fontWeight: '600', color: TOK.danger },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8,
+  },
+  modalCancel: { fontSize: 15, color: TOK.textMuted, width: 50 },
+  modalTitle: { fontSize: 11, color: TOK.textDim, fontWeight: '600', letterSpacing: 0.6 },
 });

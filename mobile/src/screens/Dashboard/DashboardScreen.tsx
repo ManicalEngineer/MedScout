@@ -25,7 +25,9 @@ const STATUS_DISPLAY: Record<string, { kind: string; label: string }> = {
 export function DashboardScreen() {
   const navigation = useNavigation<any>();
   const [countdown, setCountdown] = useState<RefillCountdown | null>(null);
+  const [countdownsByMed, setCountdownsByMed] = useState<Record<string, RefillCountdown>>({});
   const [profiles, setProfiles] = useState<MedicationProfile[]>([]);
+  const [primaryProfile, setPrimaryProfile] = useState<MedicationProfile | null>(null);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,20 +42,31 @@ export function DashboardScreen() {
         listPharmacies({}),
         listCallLogs(),
       ]);
-      const active = profs[0];
-      // Match by the active on-device profile's medication name rather than
-      // just taking the first countdown row — a user can have more than one
-      // (e.g. a stale row from before medication profiles moved on-device),
-      // and blindly picking index 0 would show the wrong one.
-      const matchedCountdown = active
-        ? cds.find(c => c.medication_name === active.medication_name) ?? null
-        : cds[0] ?? null;
-      setCountdown(matchedCountdown);
       setProfiles(profs);
+      setCountdownsByMed(Object.fromEntries(cds.map(c => [c.medication_name, c])));
       setPharmacies(pharms);
       setCalls(logs);
 
-      setShortage(active ? await getShortageStatus(active.medication_name).catch(() => null) : null);
+      // Primary = whichever tracked medication has the most recent
+      // last_fill_date — the one you most recently actually refilled, so
+      // presumably the one you're focused on right now. Not urgency, not a
+      // manually-set flag: it updates itself the next time you log a fill
+      // date for a different medication. Falls back to the first profile if
+      // nothing has a fill date yet.
+      const withFillDates = profs
+        .map(p => ({ profile: p, countdown: cds.find(c => c.medication_name === p.medication_name) }))
+        .filter((x): x is { profile: MedicationProfile; countdown: RefillCountdown } => !!x.countdown?.last_fill_date);
+      const primary = withFillDates.length > 0
+        ? withFillDates.reduce((a, b) => (b.countdown.last_fill_date! > a.countdown.last_fill_date! ? b : a))
+        : profs[0]
+          ? { profile: profs[0], countdown: cds.find(c => c.medication_name === profs[0].medication_name) ?? null }
+          : null;
+
+      setPrimaryProfile(primary?.profile ?? null);
+      setCountdown(primary?.countdown ?? null);
+
+      const med = primary?.profile;
+      setShortage(med ? await getShortageStatus(med.medication_name).catch(() => null) : null);
     } catch { /* silent */ }
   }, []);
 
@@ -65,7 +78,8 @@ export function DashboardScreen() {
     setRefreshing(false);
   };
 
-  const activeProfile = profiles[0] ?? null;
+  const activeProfile = primaryProfile;
+  const otherProfiles = profiles.filter(p => p.id !== primaryProfile?.id);
   const hasCountdownData = countdown?.days_remaining != null;
   const days = countdown?.days_remaining ?? 0;
   const ringColor = days > 10 ? TOK.success : days >= 5 ? TOK.primary : TOK.danger;
@@ -126,6 +140,28 @@ export function DashboardScreen() {
       <View style={styles.ringWrap}>
         <Ring days={days} color={ringColor} runOutDate={countdown?.run_out_date} />
       </View>
+
+      {/* Other tracked medications — the ring above always shows whichever
+          one you most recently refilled; the rest still need attention. */}
+      {otherProfiles.length > 0 && (
+        <Card style={{ padding: 0, marginBottom: 16 }}>
+          {otherProfiles.map((p, i) => {
+            const cd = countdownsByMed[p.medication_name];
+            const daysLeft = cd?.days_remaining;
+            return (
+              <View
+                key={p.id}
+                style={[styles.otherMedRow, i < otherProfiles.length - 1 && styles.callRowBorder]}
+              >
+                <Text style={styles.otherMedName}>{p.medication_name} · {p.strength}</Text>
+                <Text style={styles.otherMedDays}>
+                  {daysLeft != null ? `${daysLeft}d left` : 'No fill date'}
+                </Text>
+              </View>
+            );
+          })}
+        </Card>
+      )}
 
       {/* CTA */}
       <Button
@@ -222,6 +258,9 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 11, color: TOK.textDim, fontWeight: '600', letterSpacing: 0.6, marginBottom: 8 },
   callRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12 },
   callRowBorder: { borderBottomWidth: 0.5, borderBottomColor: TOK.borderSoft },
+  otherMedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12 },
+  otherMedName: { fontSize: 13, fontWeight: '500', color: TOK.text },
+  otherMedDays: { fontSize: 12, color: TOK.textMuted },
   callName: { fontSize: 14, fontWeight: '500', color: TOK.text },
   callTime: { fontSize: 11, color: TOK.textMuted, marginTop: 2 },
   emptyCard: { marginTop: 32, alignItems: 'center' },

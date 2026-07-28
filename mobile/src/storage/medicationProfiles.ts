@@ -5,7 +5,7 @@
 // data doesn't survive a phone change — an accepted cost for keeping it off
 // the server.
 import * as SecureStore from 'expo-secure-store';
-import { trackMedication, updateAlertSettings } from '../api/users';
+import { trackMedication, unsubscribeFromAlerts } from '../api/users';
 
 const STORAGE_KEY = 'medication_profiles';
 
@@ -43,17 +43,17 @@ export async function getActiveProfile(): Promise<MedicationProfile | null> {
   return profiles[0] ?? null;
 }
 
-// Fire-and-forget: neither of these should block the local write or surface
-// an error to the user if the network's unavailable — they're background
-// sync of the two fields the server actually needs (see api/users.ts).
-function syncServerSide(profile: MedicationProfile | null) {
+// Fire-and-forget, anonymous — no user reference is stored server-side, this
+// purely tells the backend "someone tracks this medication" for FDA
+// shortage-status coverage. Never blocks the local write or surfaces an
+// error if the network's unavailable. This is deliberately the *only*
+// automatic server sync a profile create triggers — restock alerts are a
+// separate, explicit, consented opt-in per medication (see api/users.ts
+// subscribeToAlerts and the toggle in ProfileScreen), never automatic.
+function syncTrackedMedication(profile: MedicationProfile) {
   trackMedication({
-    medication_name: profile?.medication_name ?? '',
-    strength: profile?.strength ?? '',
-  }).catch(() => {});
-  updateAlertSettings({
-    medication_name: profile?.medication_name,
-    strength: profile?.strength,
+    medication_name: profile.medication_name,
+    strength: profile.strength,
   }).catch(() => {});
 }
 
@@ -72,12 +72,17 @@ export async function createProfile(input: {
   const profiles = await readAll();
   profiles.unshift(profile);
   await writeAll(profiles);
-  syncServerSide(profile);
+  syncTrackedMedication(profile);
   return profile;
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  const profiles = (await readAll()).filter(p => p.id !== id);
-  await writeAll(profiles);
-  syncServerSide(profiles[0] ?? null);
+  const profiles = await readAll();
+  const removed = profiles.find(p => p.id === id);
+  await writeAll(profiles.filter(p => p.id !== id));
+  // If you stop tracking a medication, drop any restock-alert subscription
+  // for it too rather than leaving an orphaned link on the server.
+  if (removed) {
+    unsubscribeFromAlerts(removed.medication_name, removed.strength).catch(() => {});
+  }
 }
