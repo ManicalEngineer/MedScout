@@ -72,3 +72,40 @@ def test_alert_settings(client, auth):
 
     r = client.put("/api/v1/users/me/alert-settings", headers=auth, json={"radius_miles": 25})
     assert r.json()["radius_miles"] == 25
+
+
+def test_alert_subscriptions_lifecycle(client, auth):
+    assert client.get("/api/v1/users/me/alert-subscriptions", headers=auth).json() == []
+
+    r = client.post(
+        "/api/v1/users/me/alert-subscriptions", headers=auth,
+        json={"medication_name": "Adderall XR", "strength": "20mg"},
+    )
+    assert r.status_code == 201
+    assert r.json()["medication_name"] == "Adderall XR"
+
+    # A user can be subscribed to more than one medication at once.
+    r = client.post(
+        "/api/v1/users/me/alert-subscriptions", headers=auth,
+        json={"medication_name": "Vyvanse", "strength": "30mg"},
+    )
+    assert r.status_code == 201
+
+    subs = client.get("/api/v1/users/me/alert-subscriptions", headers=auth).json()
+    assert {s["medication_name"] for s in subs} == {"Adderall XR", "Vyvanse"}
+
+    # Resubscribing to one already active is idempotent, not an error.
+    r = client.post(
+        "/api/v1/users/me/alert-subscriptions", headers=auth,
+        json={"medication_name": "Adderall XR", "strength": "20mg"},
+    )
+    assert r.status_code == 201
+    assert len(client.get("/api/v1/users/me/alert-subscriptions", headers=auth).json()) == 2
+
+    r = client.request(
+        "DELETE", "/api/v1/users/me/alert-subscriptions", headers=auth,
+        json={"medication_name": "Adderall XR", "strength": "20mg"},
+    )
+    assert r.status_code == 204
+    subs = client.get("/api/v1/users/me/alert-subscriptions", headers=auth).json()
+    assert [s["medication_name"] for s in subs] == ["Vyvanse"]

@@ -1,6 +1,6 @@
 """Restock push notifications — notifies users with a saved pharmacy near a
-new in-stock community report, matching the medication/strength on their
-alert settings (kept in sync with the on-device active profile).
+new in-stock community report, matching one of their opt-in per-medication
+alert subscriptions.
 """
 from datetime import datetime, timezone
 from math import radians, cos, sin, asin, sqrt
@@ -9,7 +9,7 @@ from typing import Optional
 import httpx
 from sqlalchemy.orm import Session
 
-from models import AlertSettings, AvailabilityReport, CallStatus, Pharmacy, User
+from models import AlertSettings, AvailabilityReport, CallStatus, MedicationAlertSubscription, Pharmacy, User
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 EXPO_PUSH_BATCH_SIZE = 100
@@ -35,30 +35,35 @@ def _in_quiet_hours(settings: AlertSettings) -> bool:
 
 
 def _matching_recipients(report: AvailabilityReport, db: Session, exclude_user_id: Optional[int]) -> list[str]:
-    """Users whose saved pharmacy is near this report and whose alert-settings
-    medication/strength matches, excluding the contributor (if known) and
-    anyone without alerts enabled, a push token, or currently in quiet hours."""
+    """Users with a matching per-medication alert subscription whose saved
+    pharmacy is near this report, excluding the contributor (if known) and
+    anyone without a push token or currently in quiet hours. A user with
+    multiple subscriptions is checked against each one independently, but
+    only ever notified once even if more than one matches (e.g. two
+    subscriptions with overlapping name substrings)."""
     if report.status != CallStatus.in_stock or report.latitude is None or report.longitude is None:
         return []
 
-    q = db.query(User).join(AlertSettings).filter(
-        AlertSettings.enabled.is_(True),
-        User.push_token.isnot(None),
+    q = (
+        db.query(MedicationAlertSubscription, AlertSettings, User)
+        .join(User, MedicationAlertSubscription.user_id == User.id)
+        .join(AlertSettings, AlertSettings.user_id == User.id)
+        .filter(User.push_token.isnot(None))
     )
     if exclude_user_id is not None:
         q = q.filter(User.id != exclude_user_id)
 
+    matched_user_ids: set[int] = set()
     tokens = []
-    for user in q.all():
-        settings = user.alert_settings
-        if not settings or _in_quiet_hours(settings):
+    for sub, settings, user in q.all():
+        if user.id in matched_user_ids:
             continue
-        if not settings.medication_name or not settings.strength:
+        if _in_quiet_hours(settings):
             continue
-        if settings.medication_name.lower() not in report.medication_name.lower() and \
-                report.medication_name.lower() not in settings.medication_name.lower():
+        if sub.medication_name.lower() not in report.medication_name.lower() and \
+                report.medication_name.lower() not in sub.medication_name.lower():
             continue
-        if settings.strength.lower() != report.strength.lower():
+        if sub.strength.lower() != report.strength.lower():
             continue
 
         nearby = db.query(Pharmacy).filter(
@@ -70,6 +75,7 @@ def _matching_recipients(report: AvailabilityReport, db: Session, exclude_user_i
             _haversine_mi(p.latitude, p.longitude, report.latitude, report.longitude) <= settings.radius_miles
             for p in nearby
         ):
+            matched_user_ids.add(user.id)
             tokens.append(user.push_token)
 
     return tokens

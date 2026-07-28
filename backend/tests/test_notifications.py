@@ -3,9 +3,9 @@ from unittest.mock import patch
 from conftest import register
 
 
-def setup_recipient(client, push_token="ExponentPushToken[recipient]", **alert_overrides):
-    """A user with matching alert-settings medication/strength, a nearby
-    pharmacy, and alerts enabled."""
+def setup_recipient(client, push_token="ExponentPushToken[recipient]", subscribed=True, **alert_overrides):
+    """A user with a matching alert subscription, a nearby pharmacy, and
+    the given alert-settings (radius/quiet-hours) overrides applied."""
     auth = register(client, email="recipient@test.com")
     client.post(
         "/api/v1/pharmacies/", headers=auth,
@@ -13,12 +13,14 @@ def setup_recipient(client, push_token="ExponentPushToken[recipient]", **alert_o
               "latitude": 34.09, "longitude": -118.41},
     )
     client.patch("/api/v1/users/me", headers=auth, json={"push_token": push_token})
-    alert_body = {
-        "enabled": True, "radius_miles": 25, "quiet_hours_start": 22, "quiet_hours_end": 8,
-        "medication_name": "Adderall XR", "strength": "20mg",
-    }
-    alert_body.update(alert_overrides)
-    client.put("/api/v1/users/me/alert-settings", headers=auth, json=alert_body)
+    settings_body = {"radius_miles": 25, "quiet_hours_start": 22, "quiet_hours_end": 8}
+    settings_body.update(alert_overrides)
+    client.put("/api/v1/users/me/alert-settings", headers=auth, json=settings_body)
+    if subscribed:
+        client.post(
+            "/api/v1/users/me/alert-subscriptions", headers=auth,
+            json={"medication_name": "Adderall XR", "strength": "20mg"},
+        )
     return auth
 
 
@@ -63,12 +65,27 @@ def test_does_not_notify_out_of_range(mock_post, client):
 
 
 @patch("notifications.httpx.post")
-def test_does_not_notify_when_disabled(mock_post, client):
-    setup_recipient(client, enabled=False)
+def test_does_not_notify_without_subscription(mock_post, client):
+    setup_recipient(client, subscribed=False)
     reporter = register(client, email="reporter@test.com")
 
     submit_nearby_report(client, reporter)
     assert not mock_post.called
+
+
+@patch("notifications.httpx.post")
+def test_notifies_for_either_of_multiple_subscriptions(mock_post, client):
+    auth = setup_recipient(client)  # already subscribed to Adderall XR 20mg
+    client.post(
+        "/api/v1/users/me/alert-subscriptions", headers=auth,
+        json={"medication_name": "Vyvanse", "strength": "30mg"},
+    )
+    reporter = register(client, email="reporter@test.com")
+
+    r = submit_nearby_report(client, reporter, medication_name="Vyvanse", strength="30mg")
+    assert r.status_code == 201
+    assert mock_post.called
+    assert mock_post.call_args.kwargs["json"][0]["to"] == "ExponentPushToken[recipient]"
 
 
 @patch("notifications.httpx.post")

@@ -5,7 +5,10 @@ from typing import Optional
 from datetime import date, timedelta, datetime
 
 from database import get_db
-from models import User, RefillCountdown, AlertSettings, TrackedMedication, SubscriptionTier
+from models import (
+    User, RefillCountdown, AlertSettings, MedicationAlertSubscription,
+    TrackedMedication, SubscriptionTier,
+)
 from rate_limit import limiter
 from routers.auth import get_current_user, verify_password
 from timeutil import utcnow, ensure_utc
@@ -46,20 +49,21 @@ class RefillCountdownUpdate(BaseModel):
 
 
 class AlertSettingsUpdate(BaseModel):
-    enabled: Optional[bool] = None
     radius_miles: Optional[int] = None
     quiet_hours_start: Optional[int] = None
     quiet_hours_end: Optional[int] = None
-    # Kept in sync with the on-device active medication profile — the server
-    # only needs these two fields (not the full profile) to match restock
-    # reports against this user.
-    medication_name: Optional[str] = None
-    strength: Optional[str] = None
 
 
 class TrackedMedicationCreate(BaseModel):
     """Anonymous — no user reference is stored. Auth is required only to
     apply the same per-account rate limit as other write endpoints."""
+    medication_name: str
+    strength: str
+
+
+class AlertSubscriptionCreate(BaseModel):
+    """The client shows the identity-linking disclosure before calling this
+    — the endpoint itself doesn't need a separate consent step."""
     medication_name: str
     strength: str
 
@@ -84,6 +88,16 @@ def _countdown_response(rc: RefillCountdown) -> dict:
         "run_out_date": run_out_date,
         "hunt_start_date": hunt_start_date,
     }
+
+
+def _get_or_create_alert_settings(user: User, db: Session) -> AlertSettings:
+    settings = db.query(AlertSettings).filter(AlertSettings.user_id == user.id).first()
+    if not settings:
+        settings = AlertSettings(user_id=user.id)
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
 
 
 def _effective_tier(user: User) -> str:
@@ -177,13 +191,7 @@ def get_alert_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    settings = db.query(AlertSettings).filter(AlertSettings.user_id == current_user.id).first()
-    if not settings:
-        settings = AlertSettings(user_id=current_user.id)
-        db.add(settings)
-        db.commit()
-        db.refresh(settings)
-    return settings
+    return _get_or_create_alert_settings(current_user, db)
 
 
 @router.put("/me/alert-settings")
@@ -192,17 +200,61 @@ def update_alert_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    settings = db.query(AlertSettings).filter(AlertSettings.user_id == current_user.id).first()
-    if not settings:
-        settings = AlertSettings(user_id=current_user.id)
-        db.add(settings)
-
+    settings = _get_or_create_alert_settings(current_user, db)
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(settings, field, value)
-
     db.commit()
     db.refresh(settings)
     return settings
+
+
+@router.get("/me/alert-subscriptions")
+def list_alert_subscriptions(
+    current_user: User = Depends(get_current_user),
+):
+    return current_user.alert_subscriptions
+
+
+@router.post("/me/alert-subscriptions", status_code=201)
+def subscribe_to_alerts(
+    body: AlertSubscriptionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Opt in to restock alerts for one medication. Idempotent — resubscribing
+    to one already active just returns it rather than erroring."""
+    existing = db.query(MedicationAlertSubscription).filter(
+        MedicationAlertSubscription.user_id == current_user.id,
+        MedicationAlertSubscription.medication_name == body.medication_name,
+        MedicationAlertSubscription.strength == body.strength,
+    ).first()
+    if existing:
+        return existing
+
+    _get_or_create_alert_settings(current_user, db)
+    sub = MedicationAlertSubscription(
+        user_id=current_user.id,
+        medication_name=body.medication_name,
+        strength=body.strength,
+    )
+    db.add(sub)
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+@router.delete("/me/alert-subscriptions", status_code=204)
+def unsubscribe_from_alerts(
+    body: AlertSubscriptionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db.query(MedicationAlertSubscription).filter(
+        MedicationAlertSubscription.user_id == current_user.id,
+        MedicationAlertSubscription.medication_name == body.medication_name,
+        MedicationAlertSubscription.strength == body.strength,
+    ).delete()
+    db.commit()
 
 
 @router.post("/tracked-medications", status_code=204)

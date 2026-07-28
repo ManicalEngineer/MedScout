@@ -1,6 +1,7 @@
 import enum
 from sqlalchemy import (
-    Column, Integer, String, Boolean, DateTime, Float, Text, Enum, ForeignKey, Date
+    Column, Integer, String, Boolean, DateTime, Float, Text, Enum, ForeignKey, Date,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -46,6 +47,7 @@ class User(Base):
     call_logs = relationship("CallLog", back_populates="user", cascade="all, delete-orphan")
     refill_countdowns = relationship("RefillCountdown", back_populates="user", cascade="all, delete-orphan")
     alert_settings = relationship("AlertSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    alert_subscriptions = relationship("MedicationAlertSubscription", back_populates="user", cascade="all, delete-orphan")
 
 
 class Pharmacy(Base):
@@ -153,22 +155,43 @@ class ShortageStatus(Base):
 
 
 class AlertSettings(Base):
-    """Per-user push notification preferences. medication_name/strength are
-    client-supplied (kept in sync with the on-device active profile) so
-    restock matching doesn't need a server-side medication profile."""
+    """Per-user push notification preferences — radius and quiet hours only.
+    These apply across every medication the user has subscribed to alerts
+    for (see MedicationAlertSubscription); there's no per-medication radius
+    or quiet-hours, that's more granularity than anyone's asked for."""
     __tablename__ = "alert_settings"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    enabled = Column(Boolean, default=True)
     radius_miles = Column(Integer, default=10)
     quiet_hours_start = Column(Integer, default=22)  # hour in 24h, e.g. 22 = 10pm
     quiet_hours_end = Column(Integer, default=8)
-    medication_name = Column(String, nullable=True)
-    strength = Column(String, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="alert_settings")
+
+
+class MedicationAlertSubscription(Base):
+    """Opt-in, per-medication restock alert subscription. Existence of a row
+    *is* the subscription — no enabled flag, unsubscribing deletes the row.
+    This is the one place a specific medication is tied to a specific
+    account server-side; it exists only because push notifications require
+    the server to know who to notify for what. consented_at records when the
+    user confirmed the in-app disclosure that enabling this links their
+    identity to this medication."""
+    __tablename__ = "medication_alert_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    medication_name = Column(String, nullable=False)
+    strength = Column(String, nullable=False)
+    consented_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "medication_name", "strength", name="uq_alert_sub_user_med"),
+    )
+
+    user = relationship("User", back_populates="alert_subscriptions")
 
 
 class TrackedMedication(Base):
