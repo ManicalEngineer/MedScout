@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, FlatList, Alert,
+  StyleSheet, FlatList, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TOK } from '../../theme/tokens';
@@ -121,7 +121,7 @@ function StepWelcome() {
   return (
     <View style={styles.stepCenter}>
       <View style={styles.iconCircle}>
-        <Text style={{ fontSize: 46 }}>💊</Text>
+        <Image source={require('../../../assets/dog-mark.png')} style={styles.logoMark} resizeMode="contain" />
       </View>
       <Text style={styles.stepTitle}>Welcome to MedScout</Text>
       <Text style={styles.stepBody}>Find your meds without the dread.</Text>
@@ -242,6 +242,7 @@ const styles = StyleSheet.create({
     backgroundColor: TOK.primaryDim, borderWidth: 2, borderColor: TOK.primary,
     alignItems: 'center', justifyContent: 'center', marginBottom: 12,
   },
+  logoMark: { width: 56, height: 56 },
   stepTitle: { fontSize: 22, fontWeight: '700', color: TOK.text, letterSpacing: -0.4, textAlign: 'center' },
   stepBody: { fontSize: 16, color: TOK.text, textAlign: 'center', lineHeight: 24 },
   stepBody2: { fontSize: 13, color: TOK.textMuted, textAlign: 'center', lineHeight: 20 },
