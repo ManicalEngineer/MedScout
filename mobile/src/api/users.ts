@@ -1,17 +1,7 @@
 import { api } from './client';
 
-export interface MedicationProfile {
-  id: number;
-  medication_name: string;
-  strength: string;
-  formulation?: string;
-  is_child_profile: boolean;
-  child_name?: string;
-  is_active: boolean;
-}
-
 export interface RefillCountdown {
-  medication_profile_id: number;
+  medication_name: string;
   last_fill_date?: string;
   days_supply: number;
   lead_time_days: number;
@@ -21,37 +11,51 @@ export interface RefillCountdown {
   hunt_start_date?: string;
 }
 
-export function listProfiles() {
-  return api.get<MedicationProfile[]>('/users/me/medication-profiles');
+export function getRefillCountdown(medicationName: string) {
+  return api.get<RefillCountdown>(
+    `/users/me/refill-countdown?medication_name=${encodeURIComponent(medicationName)}`
+  );
 }
 
-export function createProfile(body: {
-  medication_name: string;
-  strength: string;
-  formulation?: string;
-  is_child_profile?: boolean;
-  child_name?: string;
-}) {
-  return api.post<MedicationProfile>('/users/me/medication-profiles', body);
-}
-
-export function deleteProfile(id: number) {
-  return api.delete<void>(`/users/me/medication-profiles/${id}`);
-}
-
-export function getRefillCountdown(profileId: number) {
-  return api.get<RefillCountdown>(`/users/me/medication-profiles/${profileId}/refill-countdown`);
-}
-
-export function updateRefillCountdown(profileId: number, body: {
+export function updateRefillCountdown(medicationName: string, body: {
   last_fill_date?: string;
   days_supply?: number;
   lead_time_days?: number;
   push_notifications_enabled?: boolean;
 }) {
-  return api.put<RefillCountdown>(`/users/me/medication-profiles/${profileId}/refill-countdown`, body);
+  return api.put<RefillCountdown>('/users/me/refill-countdown', {
+    medication_name: medicationName,
+    ...body,
+  });
 }
 
 export function listRefillCountdowns() {
   return api.get<RefillCountdown[]>('/users/me/refill-countdowns');
+}
+
+export interface AlertSettings {
+  enabled: boolean;
+  radius_miles: number;
+  quiet_hours_start: number;
+  quiet_hours_end: number;
+  // Kept in sync with the on-device active medication profile — see
+  // src/storage/medicationProfiles.ts. The server only needs these two
+  // fields (not the full profile) to match restock reports against this user.
+  medication_name?: string;
+  strength?: string;
+}
+
+export function getAlertSettings() {
+  return api.get<AlertSettings>('/users/me/alert-settings');
+}
+
+export function updateAlertSettings(body: Partial<AlertSettings>) {
+  return api.put<AlertSettings>('/users/me/alert-settings', body);
+}
+
+/** Anonymous upsert feeding FDA shortage ingestion — no user reference is
+ * stored server-side, this just tells the backend "someone tracks this
+ * medication" so it keeps polling openFDA for it. */
+export function trackMedication(body: { medication_name: string; strength: string }) {
+  return api.post<void>('/users/tracked-medications', body);
 }

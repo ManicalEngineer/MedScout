@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import date, timedelta, datetime
 
 from database import get_db
-from models import User, MedicationProfile, RefillCountdown, AlertSettings, SubscriptionTier
-from routers.auth import get_current_user
+from models import User, RefillCountdown, AlertSettings, TrackedMedication, SubscriptionTier
+from rate_limit import limiter
+from routers.auth import get_current_user, verify_password
 from timeutil import utcnow, ensure_utc
 
 router = APIRouter()
@@ -19,6 +20,7 @@ class UserResponse(BaseModel):
     email: str
     caregiver_mode: bool
     subscription_tier: str
+    has_password: bool
 
     class Config:
         from_attributes = True
@@ -29,23 +31,14 @@ class UserUpdate(BaseModel):
     push_token: Optional[str] = None
 
 
-class MedicationProfileCreate(BaseModel):
-    medication_name: str
-    strength: str
-    formulation: Optional[str] = None
-    is_child_profile: bool = False
-    child_name: Optional[str] = None
-
-
-class MedicationProfileResponse(MedicationProfileCreate):
-    id: int
-    is_active: bool
-
-    class Config:
-        from_attributes = True
+class DeleteAccountRequest(BaseModel):
+    # Required only for password accounts — OAuth-only accounts have nothing
+    # to check, the current session token is proof enough.
+    password: Optional[str] = None
 
 
 class RefillCountdownUpdate(BaseModel):
+    medication_name: str
     last_fill_date: Optional[date] = None
     days_supply: Optional[int] = None
     lead_time_days: Optional[int] = None
@@ -57,6 +50,18 @@ class AlertSettingsUpdate(BaseModel):
     radius_miles: Optional[int] = None
     quiet_hours_start: Optional[int] = None
     quiet_hours_end: Optional[int] = None
+    # Kept in sync with the on-device active medication profile — the server
+    # only needs these two fields (not the full profile) to match restock
+    # reports against this user.
+    medication_name: Optional[str] = None
+    strength: Optional[str] = None
+
+
+class TrackedMedicationCreate(BaseModel):
+    """Anonymous — no user reference is stored. Auth is required only to
+    apply the same per-account rate limit as other write endpoints."""
+    medication_name: str
+    strength: str
 
 
 # --- Helpers ---
@@ -70,7 +75,7 @@ def _countdown_response(rc: RefillCountdown) -> dict:
         run_out_date = run_out
         hunt_start_date = hunt_start
     return {
-        "medication_profile_id": rc.medication_profile_id,
+        "medication_name": rc.medication_name,
         "last_fill_date": rc.last_fill_date,
         "days_supply": rc.days_supply,
         "lead_time_days": rc.lead_time_days,
@@ -101,6 +106,7 @@ def get_me(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "caregiver_mode": current_user.caregiver_mode,
         "subscription_tier": _effective_tier(current_user),
+        "has_password": current_user.hashed_password is not None,
     }
 
 
@@ -118,82 +124,39 @@ def update_me(
     return {"id": current_user.id, "caregiver_mode": current_user.caregiver_mode}
 
 
-@router.get("/me/medication-profiles", response_model=list[MedicationProfileResponse])
-def list_medication_profiles(current_user: User = Depends(get_current_user)):
-    return [p for p in current_user.medication_profiles if p.is_active]
-
-
-@router.post("/me/medication-profiles", response_model=MedicationProfileResponse, status_code=201)
-def create_medication_profile(
-    body: MedicationProfileCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    profile = MedicationProfile(**body.model_dump(), user_id=current_user.id)
-    db.add(profile)
-    db.commit()
-    db.refresh(profile)
-    return profile
-
-
-@router.delete("/me/medication-profiles/{profile_id}", status_code=204)
-def delete_medication_profile(
-    profile_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    profile = db.query(MedicationProfile).filter(
-        MedicationProfile.id == profile_id,
-        MedicationProfile.user_id == current_user.id,
-    ).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-    profile.is_active = False
-    db.commit()
-
-
-@router.get("/me/medication-profiles/{profile_id}/refill-countdown")
+@router.get("/me/refill-countdown")
 def get_refill_countdown(
-    profile_id: int,
+    medication_name: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    profile = db.query(MedicationProfile).filter(
-        MedicationProfile.id == profile_id,
-        MedicationProfile.user_id == current_user.id,
+    rc = db.query(RefillCountdown).filter(
+        RefillCountdown.user_id == current_user.id,
+        RefillCountdown.medication_name == medication_name,
     ).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
-    rc = db.query(RefillCountdown).filter(RefillCountdown.medication_profile_id == profile_id).first()
     if not rc:
-        rc = RefillCountdown(user_id=current_user.id, medication_profile_id=profile_id)
+        rc = RefillCountdown(user_id=current_user.id, medication_name=medication_name)
         db.add(rc)
         db.commit()
         db.refresh(rc)
     return _countdown_response(rc)
 
 
-@router.put("/me/medication-profiles/{profile_id}/refill-countdown")
+@router.put("/me/refill-countdown")
 def update_refill_countdown(
-    profile_id: int,
     body: RefillCountdownUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    profile = db.query(MedicationProfile).filter(
-        MedicationProfile.id == profile_id,
-        MedicationProfile.user_id == current_user.id,
+    rc = db.query(RefillCountdown).filter(
+        RefillCountdown.user_id == current_user.id,
+        RefillCountdown.medication_name == body.medication_name,
     ).first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
-    rc = db.query(RefillCountdown).filter(RefillCountdown.medication_profile_id == profile_id).first()
     if not rc:
-        rc = RefillCountdown(user_id=current_user.id, medication_profile_id=profile_id)
+        rc = RefillCountdown(user_id=current_user.id, medication_name=body.medication_name)
         db.add(rc)
 
-    for field, value in body.model_dump(exclude_none=True).items():
+    for field, value in body.model_dump(exclude={"medication_name"}, exclude_none=True).items():
         setattr(rc, field, value)
 
     db.commit()
@@ -240,3 +203,46 @@ def update_alert_settings(
     db.commit()
     db.refresh(settings)
     return settings
+
+
+@router.post("/tracked-medications", status_code=204)
+@limiter.limit("30/hour")
+def track_medication(
+    request: Request,
+    body: TrackedMedicationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Anonymous upsert feeding FDA shortage ingestion — auth is required only
+    for rate-limiting; the stored row carries no reference back to the user."""
+    row = db.query(TrackedMedication).filter(
+        TrackedMedication.medication_name == body.medication_name,
+        TrackedMedication.strength == body.strength,
+    ).first()
+    if not row:
+        row = TrackedMedication(medication_name=body.medication_name, strength=body.strength)
+        db.add(row)
+    else:
+        row.last_seen_at = utcnow()
+    db.commit()
+
+
+@router.delete("/me", status_code=204)
+def delete_me(
+    body: DeleteAccountRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Permanently deletes the account and everything attached to it (pharmacies,
+    call logs, refill countdowns, alert settings) via the User model's cascade
+    relationships. Medication profiles live on-device only and aren't touched
+    by this at all. Any AvailabilityReport this user contributed stays —
+    those are already anonymous (no user_id column) by design, so there's
+    nothing of theirs left to remove from them.
+    """
+    if current_user.hashed_password:
+        if not body.password or not verify_password(body.password, current_user.hashed_password):
+            raise HTTPException(status_code=401, detail="Incorrect password")
+    db.delete(current_user)
+    db.commit()

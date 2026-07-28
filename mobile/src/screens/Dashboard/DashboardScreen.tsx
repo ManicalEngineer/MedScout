@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { TOK } from '../../theme/tokens';
 import { Card } from '../../components/Card';
@@ -9,8 +10,10 @@ import { Button } from '../../components/Button';
 import { Status } from '../../components/Status';
 import { Ring } from '../../components/Ring';
 import { listRefillCountdowns, RefillCountdown } from '../../api/users';
+import { listProfiles, MedicationProfile } from '../../storage/medicationProfiles';
 import { listPharmacies, Pharmacy } from '../../api/pharmacies';
 import { listCallLogs, CallLog } from '../../api/calls';
+import { getShortageStatus, ShortageStatus } from '../../api/availability';
 
 const STATUS_DISPLAY: Record<string, { kind: string; label: string }> = {
   in_stock: { kind: 'ok', label: 'In stock' },
@@ -22,21 +25,28 @@ const STATUS_DISPLAY: Record<string, { kind: string; label: string }> = {
 export function DashboardScreen() {
   const navigation = useNavigation<any>();
   const [countdown, setCountdown] = useState<RefillCountdown | null>(null);
+  const [profiles, setProfiles] = useState<MedicationProfile[]>([]);
   const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [calls, setCalls] = useState<CallLog[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [shortage, setShortage] = useState<ShortageStatus | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [cds, pharms, logs] = await Promise.all([
+      const [cds, profs, pharms, logs] = await Promise.all([
         listRefillCountdowns(),
+        listProfiles(),
         listPharmacies({}),
         listCallLogs(),
       ]);
       setCountdown(cds[0] ?? null);
+      setProfiles(profs);
       setPharmacies(pharms);
       setCalls(logs);
+
+      const active = profs[0];
+      setShortage(active ? await getShortageStatus(active.medication_name).catch(() => null) : null);
     } catch { /* silent */ }
   }, []);
 
@@ -48,6 +58,8 @@ export function DashboardScreen() {
     setRefreshing(false);
   };
 
+  const activeProfile = profiles[0] ?? null;
+  const hasCountdownData = countdown?.days_remaining != null;
   const days = countdown?.days_remaining ?? 0;
   const ringColor = days > 10 ? TOK.success : days >= 5 ? TOK.primary : TOK.danger;
 
@@ -69,16 +81,22 @@ export function DashboardScreen() {
   };
 
   return (
+    <SafeAreaView style={styles.root} edges={['top']}>
     <ScrollView
-      style={styles.root}
+      style={styles.flex}
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOK.primary} />}
     >
-      {/* Alert banner */}
-      {!bannerDismissed && (
+      {/* Shortage banner — real, medication-specific, FDA-sourced. Only shows
+          when there's actually something to say, not a canned weekly message. */}
+      {shortage && shortage.status !== 'available' && !bannerDismissed && (
         <View style={styles.banner}>
-          <Text style={styles.bannerText}>⚠ Regional shortage: </Text>
-          <Text style={styles.bannerMuted}>community fill rates are low this week</Text>
+          <Text style={styles.bannerText}>
+            {shortage.status === 'unavailable' ? '⚠ National shortage: ' : '⚠ Limited availability: '}
+          </Text>
+          <Text style={styles.bannerMuted}>
+            {shortage.detail || `${shortage.medication_name} is affected nationally — expect more calls than usual.`}
+          </Text>
           <TouchableOpacity onPress={() => setBannerDismissed(true)} style={styles.bannerDismiss}>
             <Text style={styles.bannerDismissText}>✕</Text>
           </TouchableOpacity>
@@ -86,9 +104,15 @@ export function DashboardScreen() {
       )}
 
       {/* Header */}
-      <Text style={styles.med}>{countdown ? 'Tracking your medication' : 'No medication set'}</Text>
+      <Text style={styles.med}>
+        {activeProfile ? `${activeProfile.medication_name} · ${activeProfile.strength}` : 'No medication set'}
+      </Text>
       <Text style={styles.headline}>
-        You're {days} {days === 1 ? 'day' : 'days'} ahead
+        {hasCountdownData
+          ? `You're ${days} ${days === 1 ? 'day' : 'days'} ahead`
+          : activeProfile
+            ? 'Set a refill date to track your supply'
+            : "You're 0 days ahead"}
       </Text>
 
       {/* Ring */}
@@ -105,7 +129,7 @@ export function DashboardScreen() {
         Start today's hunt
       </Button>
       <Text style={styles.stats}>
-        {pharmacies.length} PHARMACIES SAVED · {calledToday} CALLED TODAY
+        {pharmacies.length} PHARMAC{pharmacies.length === 1 ? 'Y' : 'IES'} SAVED · {calledToday} CALLED TODAY
       </Text>
 
       {/* Insight card */}
@@ -156,12 +180,13 @@ export function DashboardScreen() {
         </Card>
       )}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: TOK.bg },
-  content: { padding: 16, paddingTop: 60, gap: 0, paddingBottom: 20 },
+  content: { padding: 16, paddingTop: 16, gap: 0, paddingBottom: 20 },
   flex: { flex: 1 },
   banner: {
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',

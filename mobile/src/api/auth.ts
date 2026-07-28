@@ -5,6 +5,7 @@ export interface User {
   email: string;
   caregiver_mode: boolean;
   subscription_tier: 'free' | 'contributor' | 'premium';
+  has_password: boolean;
 }
 
 interface TokenResponse {
@@ -24,6 +25,15 @@ export async function login(email: string, password: string): Promise<void> {
   });
   if (!res.ok) throw new Error('Invalid credentials');
   const data: TokenResponse = await res.json();
+  await setToken(data.access_token);
+}
+
+export async function oauthLogin(provider: 'google' | 'apple', idToken: string): Promise<void> {
+  const data = await api.post<TokenResponse>(
+    '/auth/oauth',
+    { provider, id_token: idToken },
+    false,
+  );
   await setToken(data.access_token);
 }
 
@@ -59,4 +69,14 @@ export async function logoutAll(): Promise<void> {
 
 export function getMe() {
   return api.get<User>('/users/me');
+}
+
+export function updateMe(body: { caregiver_mode?: boolean; push_token?: string }) {
+  return api.patch<{ id: number; caregiver_mode: boolean }>('/users/me', body);
+}
+
+/** Permanently deletes the account and everything attached to it. */
+export async function deleteAccount(password?: string): Promise<void> {
+  await api.delete<void>('/users/me', { password });
+  await clearToken();
 }

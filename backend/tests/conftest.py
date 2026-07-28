@@ -42,14 +42,8 @@ def auth(client):
 
 
 @pytest.fixture
-def auth_with_profile(client, auth):
-    r = client.post(
-        "/api/v1/users/me/medication-profiles",
-        headers=auth,
-        json={"medication_name": "Adderall XR", "strength": "20mg"},
-    )
-    assert r.status_code == 201, r.text
-    return auth
+def auth2(client):
+    return register(client, email="user2@test.com")
 
 
 def make_pharmacy(client, headers, **overrides):

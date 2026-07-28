@@ -3,11 +3,12 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, FlatList, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { TOK } from '../../theme/tokens';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Toggle } from '../../components/Toggle';
-import { createProfile } from '../../api/users';
+import { createProfile } from '../../storage/medicationProfiles';
 import { createPharmacy } from '../../api/pharmacies';
 import { useAuth } from '../../context/AuthContext';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -67,7 +68,7 @@ export function OnboardingScreen({ navigation }: Props) {
   };
 
   return (
-    <View style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       {/* Progress dots */}
       <View style={styles.progress}>
         {[0, 1, 2].map(i => (
@@ -112,7 +113,7 @@ export function OnboardingScreen({ navigation }: Props) {
           </Button>
         )}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

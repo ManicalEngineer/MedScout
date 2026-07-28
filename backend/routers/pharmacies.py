@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ from database import get_db
 from models import Pharmacy, AvailabilityReport, CallStatus, MedicationProfile
 from routers.auth import get_current_user
 from models import User
+from rate_limit import limiter
 from timeutil import utcnow, ensure_utc, UTC_MIN
 
 router = APIRouter()
@@ -43,6 +44,36 @@ class PharmacyUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
+def _geocode_address(address: str) -> Optional[dict]:
+    """Best-effort geocode via Google — returns None on any failure so a bad
+    address never blocks saving the pharmacy, just leaves it unplottable."""
+    api_key = os.getenv("GOOGLE_PLACES_API_KEY", "")
+    if not api_key or not address:
+        return None
+    try:
+        resp = httpx.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            params={"address": address, "key": api_key},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        if not results:
+            return None
+        result = results[0]
+        loc = result.get("geometry", {}).get("location", {})
+        zip_code = None
+        for component in result.get("address_components", []):
+            if "postal_code" in component.get("types", []):
+                zip_code = component["short_name"]
+                break
+        if loc.get("lat") is None or loc.get("lng") is None:
+            return None
+        return {"latitude": loc["lat"], "longitude": loc["lng"], "zip_code": zip_code}
+    except httpx.HTTPError:
+        return None
+
+
 def _haversine_km(lat1, lon1, lat2, lon2) -> float:
     R = 6371
     lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
@@ -54,14 +85,33 @@ def _haversine_mi(lat1, lon1, lat2, lon2) -> float:
     return _haversine_km(lat1, lon1, lat2, lon2) * 0.621371
 
 
-def _community_stats(
-    pharmacy: Pharmacy,
+def _fetch_candidate_reports(
     medication_name: str,
     strength: str,
     db: Session,
+) -> list:
+    """
+    Single query fetching every report matching this medication/strength within
+    the community window, across ALL pharmacies. Called once per /pharmacies/
+    list request rather than once per saved pharmacy — list_pharmacies() then
+    does the per-pharmacy proximity match in Python against this shared list,
+    which turns what used to be up to 2 DB round-trips per pharmacy into one.
+    """
+    cutoff = utcnow() - timedelta(days=COMMUNITY_REPORT_WINDOW_DAYS)
+    return db.query(AvailabilityReport).filter(
+        AvailabilityReport.reported_at >= cutoff,
+        func.lower(AvailabilityReport.medication_name).contains(medication_name.lower(), autoescape=True),
+        func.lower(AvailabilityReport.strength).contains(strength.lower(), autoescape=True),
+    ).all()
+
+
+def _community_stats(
+    pharmacy: Pharmacy,
+    candidate_reports: list,
 ) -> dict:
     """
-    Query AvailabilityReport across all users for this pharmacy + medication.
+    Match this pharmacy against the shared candidate_reports list (see
+    _fetch_candidate_reports) and summarize.
 
     Matching strategy (in priority order):
       1. lat/lng proximity within PROXIMITY_MATCH_KM (most reliable)
@@ -69,43 +119,30 @@ def _community_stats(
 
     Returns fill_rate, report_count, and a per-week breakdown for the Insights card.
     """
-    cutoff = utcnow() - timedelta(days=COMMUNITY_REPORT_WINDOW_DAYS)
-
-    q = db.query(AvailabilityReport).filter(
-        AvailabilityReport.reported_at >= cutoff,
-        func.lower(AvailabilityReport.medication_name).contains(medication_name.lower(), autoescape=True),
-        func.lower(AvailabilityReport.strength).contains(strength.lower(), autoescape=True),
-    )
-
     # Prefer coordinate match; fall back to name+zip
     if pharmacy.latitude is not None and pharmacy.longitude is not None:
-        # Bounding-box prefilter in SQL (uses the lat/lng indexes) so only a
-        # handful of rows reach the exact haversine check in Python.
-        delta_lat = PROXIMITY_MATCH_KM / 111.0
-        delta_lng = PROXIMITY_MATCH_KM / (111.0 * max(cos(radians(pharmacy.latitude)), 0.01))
-        candidates = q.filter(
-            AvailabilityReport.latitude.between(pharmacy.latitude - delta_lat, pharmacy.latitude + delta_lat),
-            AvailabilityReport.longitude.between(pharmacy.longitude - delta_lng, pharmacy.longitude + delta_lng),
-        ).all()
         reports = [
-            r for r in candidates
-            if _haversine_km(pharmacy.latitude, pharmacy.longitude, r.latitude, r.longitude)
+            r for r in candidate_reports
+            if r.latitude is not None and r.longitude is not None
+            and _haversine_km(pharmacy.latitude, pharmacy.longitude, r.latitude, r.longitude)
             <= PROXIMITY_MATCH_KM
         ]
         # Also include name+zip matches that lack coordinates
         if pharmacy.zip_code:
-            no_coord = q.filter(
-                AvailabilityReport.latitude.is_(None),
-                func.lower(AvailabilityReport.pharmacy_name).contains(pharmacy.name.lower(), autoescape=True),
-                AvailabilityReport.zip_code == pharmacy.zip_code,
-            ).all()
+            no_coord = [
+                r for r in candidate_reports
+                if r.latitude is None
+                and pharmacy.name.lower() in (r.pharmacy_name or "").lower()
+                and r.zip_code == pharmacy.zip_code
+            ]
             seen_ids = {r.id for r in reports}
             reports += [r for r in no_coord if r.id not in seen_ids]
     elif pharmacy.zip_code:
-        reports = q.filter(
-            func.lower(AvailabilityReport.pharmacy_name).contains(pharmacy.name.lower(), autoescape=True),
-            AvailabilityReport.zip_code == pharmacy.zip_code,
-        ).all()
+        reports = [
+            r for r in candidate_reports
+            if pharmacy.name.lower() in (r.pharmacy_name or "").lower()
+            and r.zip_code == pharmacy.zip_code
+        ]
     else:
         reports = []
 
@@ -148,7 +185,7 @@ def _community_stats(
         "last_report_at": last_report_at.isoformat(),
         "reliability_score": reliability_score,
         "insight": (
-            f"Had stock {weeks_with_stock} of the last {weeks_with_data} weeks"
+            f"Had stock {weeks_with_stock} of the last {weeks_with_data} week{'' if weeks_with_data == 1 else 's'}"
             if weeks_with_data > 0 else None
         ),
     }
@@ -176,6 +213,7 @@ def _pharmacy_response(
         "sort_order": p.sort_order,
         "last_call_status": last.status.value if last else None,
         "last_call_date": last.called_at if last else None,
+        "last_call_expected_date": last.expected_restock_date if last else None,
         "distance_miles": distance_miles,
         "community_fill_rate": community["community_fill_rate"],
         "community_report_count": community["community_report_count"],
@@ -220,13 +258,11 @@ def list_pharmacies(
             med_strength = active.strength
 
     pharmacies = current_user.pharmacies
+    candidate_reports = _fetch_candidate_reports(med_name, med_strength, db) if med_name else []
+    empty_community = {"community_fill_rate": None, "community_report_count": 0, "weekly_fill_rates": [], "last_report_at": None, "reliability_score": 0.0, "insight": None}
     items = []
     for p in pharmacies:
-        community = (
-            _community_stats(p, med_name, med_strength, db)
-            if med_name else
-            {"community_fill_rate": None, "community_report_count": 0, "weekly_fill_rates": [], "last_report_at": None, "reliability_score": 0.0, "insight": None}
-        )
+        community = _community_stats(p, candidate_reports) if med_name else empty_community
         items.append(_pharmacy_response(p, community, lat, lng))
 
     if sort_by == "proximity":
@@ -247,12 +283,22 @@ def list_pharmacies(
 
 
 @router.post("/", status_code=201)
+@limiter.limit("60/hour")
 def create_pharmacy(
+    request: Request,
     body: PharmacyCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    pharmacy = Pharmacy(**body.model_dump(), user_id=current_user.id)
+    data = body.model_dump()
+    if data.get("address") and (data.get("latitude") is None or data.get("longitude") is None):
+        geocoded = _geocode_address(data["address"])
+        if geocoded:
+            data["latitude"] = geocoded["latitude"]
+            data["longitude"] = geocoded["longitude"]
+            if not data.get("zip_code"):
+                data["zip_code"] = geocoded["zip_code"]
+    pharmacy = Pharmacy(**data, user_id=current_user.id)
     db.add(pharmacy)
     db.commit()
     db.refresh(pharmacy)
@@ -261,7 +307,9 @@ def create_pharmacy(
 
 
 @router.get("/nearby")
+@limiter.limit("30/hour")
 def nearby_pharmacies(
+    request: Request,
     lat: float = Query(...),
     lng: float = Query(...),
     radius_meters: int = Query(8000),
@@ -280,11 +328,29 @@ def nearby_pharmacies(
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Places API error")
 
-    results = resp.json().get("results", [])
+    # Places API (legacy) always returns HTTP 200, even on failure — the real
+    # outcome is in this "status" field. ZERO_RESULTS is a legitimate empty
+    # answer; anything else (bad/restricted key, quota, billing) is an error
+    # that would otherwise silently look identical to "no pharmacies nearby."
+    body = resp.json()
+    status = body.get("status")
+    if status not in ("OK", "ZERO_RESULTS"):
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "places_api_error", "status": status, "message": body.get("error_message")},
+        )
+
+    results = body.get("results", [])
     already_saved = {p.name.lower() for p in current_user.pharmacies}
+
+    # Google sometimes tags non-pharmacy businesses (e.g. veterinary clinics) with
+    # the "pharmacy" type alongside their real category — exclude those.
+    EXCLUDED_TYPES = {"veterinary_care"}
 
     candidates = []
     for r in results:
+        if EXCLUDED_TYPES & set(r.get("types", [])):
+            continue
         loc = r.get("geometry", {}).get("location", {})
         candidates.append({
             "place_id": r["place_id"],
@@ -308,7 +374,9 @@ class AddFromPlaceBody(BaseModel):
 
 
 @router.post("/from-place", status_code=201)
+@limiter.limit("60/hour")
 def add_pharmacy_from_place(
+    request: Request,
     body: AddFromPlaceBody,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -330,7 +398,15 @@ def add_pharmacy_from_place(
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Places API error")
 
-    result = resp.json().get("result", {})
+    body = resp.json()
+    status = body.get("status")
+    if status != "OK":
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "places_api_error", "status": status, "message": body.get("error_message")},
+        )
+
+    result = body.get("result", {})
     loc = result.get("geometry", {}).get("location", {})
 
     zip_code = None
@@ -361,7 +437,9 @@ def add_pharmacy_from_place(
 
 
 @router.patch("/{pharmacy_id}")
+@limiter.limit("60/hour")
 def update_pharmacy(
+    request: Request,
     pharmacy_id: int,
     body: PharmacyUpdate,
     db: Session = Depends(get_db),
@@ -372,7 +450,17 @@ def update_pharmacy(
     ).first()
     if not pharmacy:
         raise HTTPException(status_code=404, detail="Pharmacy not found")
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    address_changed = "address" in updates and updates["address"] != pharmacy.address
+    needs_coords = pharmacy.latitude is None or pharmacy.longitude is None
+    if updates.get("address") and (address_changed or needs_coords) and "latitude" not in updates and "longitude" not in updates:
+        geocoded = _geocode_address(updates["address"])
+        if geocoded:
+            updates["latitude"] = geocoded["latitude"]
+            updates["longitude"] = geocoded["longitude"]
+            if "zip_code" not in updates:
+                updates["zip_code"] = geocoded["zip_code"]
+    for field, value in updates.items():
         setattr(pharmacy, field, value)
     db.commit()
     db.refresh(pharmacy)

@@ -1,0 +1,21 @@
+[Unit]
+Description=MedScout backend API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=medscout
+Group=medscout
+WorkingDirectory=/opt/medscout/backend
+EnvironmentFile=/opt/medscout/backend/.env
+ExecStartPre=/opt/medscout/backend/.venv/bin/alembic upgrade head
+# Single worker: the in-process scheduler (scheduler.py) is not safe to run
+# more than once concurrently. Scale by running additional single-worker
+# instances behind a load balancer with ENABLE_SCHEDULER=false on all but
+# one, not by raising --workers here.
+ExecStart=/opt/medscout/backend/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

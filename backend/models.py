@@ -64,7 +64,6 @@ class MedicationProfile(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="medication_profiles")
-    refill_countdown = relationship("RefillCountdown", back_populates="medication_profile", uselist=False)
 
 
 class Pharmacy(Base):
@@ -103,6 +102,16 @@ class CallLog(Base):
     called_at = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(Enum(CallStatus), default=CallStatus.unknown)
     contributed_to_community = Column(Boolean, default=False)
+    medication_name = Column(String, nullable=True)
+    strength = Column(String, nullable=True)
+    expected_restock_date = Column(Date, nullable=True)
+    # Private — never copied into AvailabilityReport by _maybe_contribute()
+    notes = Column(String, nullable=True)
+    manufacturer = Column(String, nullable=True)
+    contributed_report_id = Column(Integer, ForeignKey("availability_reports.id"), nullable=True)
+    # Set once a check-back reminder push has fired for this call's
+    # expected_restock_date, so the daily job doesn't re-notify every run.
+    checkback_reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="call_logs")
@@ -110,20 +119,23 @@ class CallLog(Base):
 
 
 class RefillCountdown(Base):
-    """Per-medication-profile refill countdown. Caregivers get one per child profile."""
+    """Per-medication refill countdown. Caregivers get one per child's medication.
+    medication_name is client-supplied (the profile itself lives on-device only)."""
     __tablename__ = "refill_countdowns"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    medication_profile_id = Column(Integer, ForeignKey("medication_profiles.id"), unique=True, nullable=False)
+    medication_name = Column(String, nullable=False)
     last_fill_date = Column(Date, nullable=True)
     days_supply = Column(Integer, default=30)
     lead_time_days = Column(Integer, default=7)
     push_notifications_enabled = Column(Boolean, default=True)
+    # Compared against last_fill_date to send the "start hunting" reminder
+    # exactly once per refill cycle rather than once per day.
+    last_reminder_sent_at = Column(Date, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="refill_countdowns")
-    medication_profile = relationship("MedicationProfile", back_populates="refill_countdown")
 
 
 class AvailabilityReport(Base):
@@ -139,12 +151,30 @@ class AvailabilityReport(Base):
     medication_name = Column(String, nullable=False)
     strength = Column(String, nullable=False)
     status = Column(Enum(CallStatus), nullable=False)
+    expected_restock_date = Column(Date, nullable=True)
     source = Column(Enum(ReportSource), default=ReportSource.community)
     reported_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
+class ShortageStatus(Base):
+    """National shortage status per medication brand, ingested daily from
+    openFDA. Distinct from AvailabilityReport: this is not pharmacy-specific —
+    it answers 'is this drug in a national shortage', not 'does pharmacy X
+    have it'. Surfaced on the Dashboard instead of a generic static banner."""
+    __tablename__ = "shortage_status"
+
+    id = Column(Integer, primary_key=True, index=True)
+    medication_name = Column(String, unique=True, index=True, nullable=False)
+    status = Column(String, nullable=False)  # "available" | "limited" | "unavailable"
+    detail = Column(String, nullable=True)
+    source = Column(String, default="fda")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class AlertSettings(Base):
-    """Per-user push notification preferences."""
+    """Per-user push notification preferences. medication_name/strength are
+    client-supplied (kept in sync with the on-device active profile) so
+    restock matching doesn't need a server-side medication profile."""
     __tablename__ = "alert_settings"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -153,6 +183,21 @@ class AlertSettings(Base):
     radius_miles = Column(Integer, default=10)
     quiet_hours_start = Column(Integer, default=22)  # hour in 24h, e.g. 22 = 10pm
     quiet_hours_end = Column(Integer, default=8)
+    medication_name = Column(String, nullable=True)
+    strength = Column(String, nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user = relationship("User", back_populates="alert_settings")
+
+
+class TrackedMedication(Base):
+    """Anonymous tally of medications tracked locally across all users — no
+    user_id, ever. Feeds FDA shortage ingestion so shortage-banner coverage
+    isn't limited to users who've enabled restock alerts, without linking
+    any medication to an account."""
+    __tablename__ = "tracked_medications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    medication_name = Column(String, nullable=False, index=True)
+    strength = Column(String, nullable=False)
+    last_seen_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

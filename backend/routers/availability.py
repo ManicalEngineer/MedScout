@@ -7,10 +7,11 @@ from datetime import datetime, timedelta
 from math import radians, cos, sin, asin, sqrt
 
 from database import get_db
-from models import AvailabilityReport, CallLog, CallStatus, ReportSource, User, SubscriptionTier
+from models import AvailabilityReport, CallLog, CallStatus, ReportSource, ShortageStatus, User, SubscriptionTier
 from routers.auth import get_current_user
 from rate_limit import limiter
 from timeutil import utcnow, ensure_utc
+from notifications import notify_restock
 
 router = APIRouter()
 
@@ -52,7 +53,7 @@ def _report_response(r: AvailabilityReport) -> dict:
         "strength": r.strength,
         "status": r.status.value,
         "source": r.source.value,
-        "reported_at": r.reported_at,
+        "reported_at": ensure_utc(r.reported_at),
         "trust_level": _trust_level(r.reported_at),
     }
 
@@ -67,11 +68,11 @@ def _call_as_report(c: CallLog) -> dict:
         "latitude": p.latitude if p else None,
         "longitude": p.longitude if p else None,
         "zip_code": p.zip_code if p else None,
-        "medication_name": "",
-        "strength": "",
+        "medication_name": c.medication_name or "",
+        "strength": c.strength or "",
         "status": c.status.value,
         "source": "my_logs",
-        "reported_at": c.called_at,
+        "reported_at": ensure_utc(c.called_at),
         "trust_level": _trust_level(c.called_at),
     }
 
@@ -104,39 +105,54 @@ def get_map_reports(
     zip_code: Optional[str] = Query(None),
     medication_name: Optional[str] = Query(None),
     strength: Optional[str] = Query(None),
-    source: Optional[str] = Query(None, description="community | fda | ashp | my_logs — omit for community+official"),
+    sources: Optional[str] = Query(
+        None,
+        description="Comma-separated subset of: my_logs, community, fda, ashp. Defaults to community+fda+ashp.",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    results = []
+    _promote_contributor(current_user, db)
+    is_contributor = (
+        current_user.subscription_tier in (SubscriptionTier.contributor, SubscriptionTier.premium)
+    )
 
-    if source == "my_logs" or source is None:
-        # Include user's own call logs
+    selected = {s.strip() for s in sources.split(",") if s.strip()} if sources else {"community", "fda", "ashp"}
+    results = []
+    contributed_report_ids = set()
+
+    if "my_logs" in selected:
         cutoff = utcnow() - timedelta(hours=48)
         q = db.query(CallLog).filter(
             CallLog.user_id == current_user.id,
             CallLog.called_at >= cutoff,
         )
-        # CallLog stores no medication fields (privacy: transcripts stay on device),
-        # so medication/strength filters don't apply to the user's own logs.
         my_calls = q.order_by(desc(CallLog.called_at)).all()
-        if source == "my_logs":
-            results = [_call_as_report(c) for c in my_calls]
-        else:
-            results += [_call_as_report(c) for c in my_calls]
+        results += [_call_as_report(c) for c in my_calls]
+        # A contributed call already appears once via its CallLog above — exclude
+        # the AvailabilityReport it spawned so it isn't shown a second time below.
+        contributed_report_ids = {c.contributed_report_id for c in my_calls if c.contributed_report_id}
 
-    if source != "my_logs":
-        # Community + official reports
+    # Give-to-get: other people's reports are the core value here, so they're
+    # the thing withheld from non-contributors (mirrors /heatmap's gate).
+    # A user's own logs above are unaffected — that's their private data.
+    requested_community = selected & {"community", "fda", "ashp"}
+    community_locked = bool(requested_community) and not is_contributor
+    report_sources = requested_community if is_contributor else set()
+    if report_sources:
         cutoff = utcnow() - timedelta(hours=48)
-        q = db.query(AvailabilityReport).filter(AvailabilityReport.reported_at >= cutoff)
+        q = db.query(AvailabilityReport).filter(
+            AvailabilityReport.reported_at >= cutoff,
+            AvailabilityReport.source.in_(report_sources),
+        )
         if medication_name:
             q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
         if strength:
             q = q.filter(AvailabilityReport.strength.icontains(strength, autoescape=True))
-        if source in ("community", "fda", "ashp"):
-            q = q.filter(AvailabilityReport.source == source)
         if zip_code:
             q = q.filter(AvailabilityReport.zip_code == zip_code)
+        if contributed_report_ids:
+            q = q.filter(AvailabilityReport.id.notin_(contributed_report_ids))
         community_reports = q.order_by(desc(AvailabilityReport.reported_at)).limit(500).all()
         results += [_report_response(r) for r in community_reports]
 
@@ -149,7 +165,10 @@ def get_map_reports(
             and _haversine_km(lat, lng, r["latitude"], r["longitude"]) <= radius_km
         ]
 
-    return sorted(results, key=lambda r: r["reported_at"], reverse=True)
+    return {
+        "reports": sorted(results, key=lambda r: r["reported_at"], reverse=True),
+        "community_locked": community_locked,
+    }
 
 
 @router.post("/report", status_code=201)
@@ -181,6 +200,7 @@ def submit_report(
         current_user.subscription_tier = SubscriptionTier.contributor
     db.commit()
     db.refresh(report)
+    notify_restock(report, db, exclude_user_id=current_user.id)
     return _report_response(report)
 
 
@@ -231,3 +251,25 @@ def get_heatmap(
         }
         for z, d in zip_data.items()
     ], key=lambda x: x["fill_rate"], reverse=True)
+
+
+@router.get("/shortage-status")
+def get_shortage_status(
+    medication_name: str = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """National shortage status for a medication brand, ingested daily from
+    openFDA. Not pharmacy-specific — see ShortageStatus model docstring."""
+    row = db.query(ShortageStatus).filter(
+        ShortageStatus.medication_name == medication_name
+    ).first()
+    if not row:
+        return None
+    return {
+        "medication_name": row.medication_name,
+        "status": row.status,
+        "detail": row.detail,
+        "source": row.source,
+        "updated_at": ensure_utc(row.updated_at),
+    }

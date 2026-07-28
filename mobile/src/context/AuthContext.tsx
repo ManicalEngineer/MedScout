@@ -1,10 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { getToken, clearToken } from '../api/client';
+import { getToken, clearToken, setUnauthorizedHandler } from '../api/client';
 import { getMe, refreshSession, User } from '../api/auth';
+import { listProfiles } from '../storage/medicationProfiles';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  // Medication profiles live on-device only (see storage/medicationProfiles.ts)
+  // — this drives the Onboarding vs Main routing decision in AppNavigator,
+  // where a server-side flag used to.
+  hasMedicationProfile: boolean;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -12,12 +17,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  hasMedicationProfile: false,
   signOut: async () => {},
   refresh: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [hasMedicationProfile, setHasMedicationProfile] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
@@ -26,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!token) { setUser(null); return; }
       const me = await getMe();
       setUser(me);
+      setHasMedicationProfile((await listProfiles()).length > 0);
       refreshSession(); // fire-and-forget: slides the 7-day session forward
     } catch {
       setUser(null);
@@ -41,8 +49,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
+  // client.ts already clears the token when any request comes back 401 — this
+  // just drops the in-memory user so AppNavigator swaps to the auth stack.
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, refresh }}>
+    <AuthContext.Provider value={{ user, loading, hasMedicationProfile, signOut, refresh }}>
       {children}
     </AuthContext.Provider>
   );

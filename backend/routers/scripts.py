@@ -3,7 +3,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, MedicationProfile, Pharmacy
+from models import User, Pharmacy
 from routers.auth import get_current_user
 
 router = APIRouter()
@@ -46,7 +46,9 @@ SCRIPTS = {
 def get_script(
     tone: str = Query("polite", description="short | polite | insurance"),
     grumpy: bool = Query(False, description="One-sentence version"),
-    profile_id: Optional[int] = Query(None, description="Medication profile to auto-fill from"),
+    medication_name: Optional[str] = Query(None, description="Medication name to auto-fill (from the on-device profile)"),
+    strength: Optional[str] = Query(None, description="Strength to auto-fill (from the on-device profile)"),
+    is_child_profile: bool = Query(False, description="Whether the active on-device profile is a child's"),
     pharmacy_id: Optional[int] = Query(None, description="Pharmacy context (for pre-flight screen)"),
     insurance: Optional[str] = Query(None, description="Insurance name for insurance tone"),
     db: Session = Depends(get_db),
@@ -55,23 +57,9 @@ def get_script(
     if tone not in SCRIPTS:
         raise HTTPException(status_code=400, detail=f"tone must be one of: {', '.join(SCRIPTS.keys())}")
 
-    # Resolve medication profile
-    profile = None
-    if profile_id:
-        profile = db.query(MedicationProfile).filter(
-            MedicationProfile.id == profile_id,
-            MedicationProfile.user_id == current_user.id,
-            MedicationProfile.is_active == True,
-        ).first()
-        if not profile:
-            raise HTTPException(status_code=404, detail="Medication profile not found")
-    else:
-        # Fall back to first active profile
-        profile = next((p for p in current_user.medication_profiles if p.is_active), None)
-
-    name = profile.medication_name if profile else "{medication name}"
-    strength = profile.strength if profile else "{strength}"
-    is_caregiver = current_user.caregiver_mode and (profile.is_child_profile if profile else False)
+    name = medication_name or "{medication name}"
+    strength = strength or "{strength}"
+    is_caregiver = current_user.caregiver_mode and is_child_profile
     ins = insurance or "{insurance}"
 
     tone_scripts = SCRIPTS[tone]
