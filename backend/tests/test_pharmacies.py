@@ -1,4 +1,37 @@
+from unittest.mock import MagicMock, patch
+
 from conftest import register, make_pharmacy
+
+
+def _fake_place_details_response():
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "status": "OK",
+        "result": {
+            "name": "Places Pharmacy",
+            "formatted_phone_number": "(555) 123-4567",
+            "formatted_address": "1 Market St, San Francisco, CA 94105",
+            "geometry": {"location": {"lat": 37.79, "lng": -122.40}},
+            "address_components": [{"types": ["postal_code"], "short_name": "94105"}],
+        },
+    }
+    return resp
+
+
+@patch("routers.pharmacies.httpx.get")
+def test_add_from_place(mock_get, client, auth, monkeypatch):
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-key")
+    mock_get.return_value = _fake_place_details_response()
+
+    r = client.post(
+        "/api/v1/pharmacies/from-place", headers=auth,
+        json={"place_id": "abc123", "is_vaulted": True},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["name"] == "Places Pharmacy"
+    assert body["is_vaulted"] is True
 
 
 def test_create_and_list(client, auth):

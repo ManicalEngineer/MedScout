@@ -9,7 +9,7 @@ import os
 import httpx
 
 from database import get_db
-from models import Pharmacy, AvailabilityReport, CallStatus, MedicationProfile
+from models import Pharmacy, AvailabilityReport, CallStatus
 from routers.auth import get_current_user
 from models import User
 from rate_limit import limiter
@@ -233,29 +233,13 @@ def list_pharmacies(
     lng: Optional[float] = Query(None),
     medication_name: Optional[str] = Query(None, description="Filter community reports by medication"),
     strength: Optional[str] = Query(None, description="Filter community reports by strength"),
-    profile_id: Optional[int] = Query(None, description="Pull medication/strength from a saved profile"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Resolve medication name + strength for community lookup
+    # Medication profiles are now stored on-device; callers provide the
+    # medication and strength explicitly for community lookup.
     med_name = medication_name or ""
     med_strength = strength or ""
-
-    if profile_id:
-        profile = db.query(MedicationProfile).filter(
-            MedicationProfile.id == profile_id,
-            MedicationProfile.user_id == current_user.id,
-            MedicationProfile.is_active == True,
-        ).first()
-        if profile:
-            med_name = profile.medication_name
-            med_strength = profile.strength
-    elif not med_name:
-        # Auto-resolve from first active profile
-        active = next((p for p in current_user.medication_profiles if p.is_active), None)
-        if active:
-            med_name = active.medication_name
-            med_strength = active.strength
 
     pharmacies = current_user.pharmacies
     candidate_reports = _fetch_candidate_reports(med_name, med_strength, db) if med_name else []
@@ -398,15 +382,15 @@ def add_pharmacy_from_place(
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="Places API error")
 
-    body = resp.json()
-    status = body.get("status")
+    place_data = resp.json()
+    status = place_data.get("status")
     if status != "OK":
         raise HTTPException(
             status_code=502,
-            detail={"code": "places_api_error", "status": status, "message": body.get("error_message")},
+            detail={"code": "places_api_error", "status": status, "message": place_data.get("error_message")},
         )
 
-    result = body.get("result", {})
+    result = place_data.get("result", {})
     loc = result.get("geometry", {}).get("location", {})
 
     zip_code = None
