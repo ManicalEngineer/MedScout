@@ -42,32 +42,13 @@ class User(Base):
     push_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    medication_profiles = relationship("MedicationProfile", back_populates="user", cascade="all, delete-orphan")
     pharmacies = relationship("Pharmacy", back_populates="user", cascade="all, delete-orphan")
     call_logs = relationship("CallLog", back_populates="user", cascade="all, delete-orphan")
     refill_countdowns = relationship("RefillCountdown", back_populates="user", cascade="all, delete-orphan")
     alert_settings = relationship("AlertSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
 
-class MedicationProfile(Base):
-    """User's medication details — auto-fills scripts and reports."""
-    __tablename__ = "medication_profiles"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    medication_name = Column(String, nullable=False)   # e.g. "Adderall XR"
-    strength = Column(String, nullable=False)           # e.g. "20mg"
-    formulation = Column(String, nullable=True)         # e.g. "tablet", "capsule"
-    is_child_profile = Column(Boolean, default=False)
-    child_name = Column(String, nullable=True)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    user = relationship("User", back_populates="medication_profiles")
-
-
 class Pharmacy(Base):
-    """A pharmacy in the user's dialer list."""
     __tablename__ = "pharmacies"
 
     id = Column(Integer, primary_key=True, index=True)
