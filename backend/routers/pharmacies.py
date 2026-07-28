@@ -199,7 +199,7 @@ def _pharmacy_response(
 ) -> dict:
     last = p.last_call
     distance_miles = None
-    if user_lat and user_lng and p.latitude and p.longitude:
+    if user_lat is not None and user_lng is not None and p.latitude is not None and p.longitude is not None:
         distance_miles = round(_haversine_mi(user_lat, user_lng, p.latitude, p.longitude), 1)
     return {
         "id": p.id,
@@ -344,7 +344,7 @@ def nearby_pharmacies(
             "longitude": loc.get("lng"),
             "distance_miles": round(
                 _haversine_mi(lat, lng, loc["lat"], loc["lng"]), 1
-            ) if loc.get("lat") and loc.get("lng") else None,
+            ) if loc.get("lat") is not None and loc.get("lng") is not None else None,
             "already_saved": r.get("name", "").lower() in already_saved,
         })
 
