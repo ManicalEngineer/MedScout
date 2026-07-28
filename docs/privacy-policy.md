@@ -21,16 +21,16 @@ When you create or use a MedScout account, we may collect:
 
 ### Medication and health-related information
 
-You may choose to provide information such as:
+Your medication profile — medication name, strength, formulation, and whether it relates to a child or dependent (including a child's name, if provided) — is stored **only on your device**. MedScout's servers do not receive, store, or retain this profile.
 
-- Medication name
-- Medication strength and formulation
-- Refill dates and supply information
-- Medication-related notes
-- Whether a medication profile relates to a child or dependent
-- Pharmacy call results and related status information
+Two narrower pieces of information do reach our servers, tied to your account, only to power features you've turned on:
 
-This information may be sensitive. We use it to provide features you request, such as call scripts, refill reminders, availability alerts, and medication tracking.
+- **Medication name and strength**, if you set a refill reminder or enable nearby restock alerts — used solely to send you the reminder or alert, and to generate call scripts and refill countdowns you request
+- **Pharmacy call results, status, and any notes you add** about a call — kept private and never shared, including with the MedScout community, unless you explicitly choose to contribute a report
+
+Separately, your device may tell us — with no account or identity attached — that a given medication and strength is being tracked by someone, so we know to keep monitoring national shortage status for it. This signal cannot be traced back to you or any account.
+
+This information may be sensitive. We use it only to provide the features described above.
 
 ### Pharmacy and location information
 
@@ -82,7 +82,7 @@ This may include information such as:
 - Reported date or time
 - Expected restock information
 
-This data is processed to remove information that directly identifies the contributor. We do not sell the contributor's identity or provide buyers with a way to look up who submitted a report.
+This data is collected anonymously from the moment you submit it — a community report is never linked to your account or identity in our systems in the first place, so there is no identifying information to remove before sharing it. We do not sell the contributor's identity or provide buyers with a way to look up who submitted a report.
 
 Commercial customers may use this information for purposes such as:
 
@@ -186,7 +186,7 @@ When you delete your account, we will delete or de-identify account-linked infor
 - Backups and disaster-recovery systems
 - Previously published de-identified community data that can no longer reasonably be linked to you
 
-Community stock reports that have been properly de-identified may continue to be retained and used after account deletion because they are no longer treated as personal information linked to your account.
+Community stock reports are never linked to your account in the first place, so they are unaffected by account deletion and may continue to be retained and used.
 
 ## 11. Security
 
@@ -252,4 +252,4 @@ Before publishing this policy, confirm:
 7. Will the policy apply to both the mobile app and `getmedscout.com`?
 8. Do you want a separate Terms of Service and Community Contribution/Data License agreement?
 
-> **Legal and implementation note:** The current backend stores medication profiles with a `user_id`, so the implementation should enforce this policy's separation through access controls, export rules, and a dedicated de-identification pipeline—not merely by stating that the data is separated. This draft should be reviewed by a privacy attorney before publication, especially because medication information may constitute sensitive health information depending on the jurisdictions involved.
+> **Legal and implementation note:** As of the 2026-07-28 architecture change, medication profiles (medication name, strength, formulation, and any child/dependent info) are stored on-device only and never reach the backend; only medication name/strength sync server-side, either tied to the account (for refill reminders and restock alerts) or fully anonymously with no `user_id` (for shortage tracking). Community stock reports (`AvailabilityReport`) have never had a `user_id` column — they're anonymous by schema design, not by a post-hoc de-identification step, so there's no separate de-identification pipeline to audit; the enforcement is that the identifying column simply doesn't exist. This draft should still be reviewed by a privacy attorney before publication, especially because medication information may constitute sensitive health information depending on the jurisdictions involved.
