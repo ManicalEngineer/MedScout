@@ -11,3 +11,4 @@ python-multipart
 httpx
 slowapi
 apscheduler
+sentry-sdk[fastapi]
