@@ -13,7 +13,10 @@ def setup_recipient(client, push_token="ExponentPushToken[recipient]", subscribe
               "latitude": 34.09, "longitude": -118.41},
     )
     client.patch("/api/v1/users/me", headers=auth, json={"push_token": push_token})
-    settings_body = {"radius_miles": 25, "quiet_hours_start": 22, "quiet_hours_end": 8}
+    # start == end disables quiet hours entirely (see _in_quiet_hours), so
+    # tests are deterministic regardless of the real wall-clock time they run
+    # at. test_does_not_notify_during_quiet_hours overrides this deliberately.
+    settings_body = {"radius_miles": 25, "quiet_hours_start": 0, "quiet_hours_end": 0}
     settings_body.update(alert_overrides)
     client.put("/api/v1/users/me/alert-settings", headers=auth, json=settings_body)
     if subscribed:
