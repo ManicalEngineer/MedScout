@@ -56,7 +56,8 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "expo-notifications",
-      "./plugins/withFmtConstevalFix.js"
+      "./plugins/withFmtConstevalFix.js",
+      "@sentry/react-native"
     ]
   }
 }
