@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
 import posthog from 'posthog-js'
 
 const perks = [
@@ -237,7 +238,13 @@ export function CTASection() {
           </>
         )}
 
-        <p className="text-xs text-[#30363D]">ADHD Med Survival Suite · 2026</p>
+        <div className="flex items-center gap-3 text-xs text-[#30363D]">
+          <span>ADHD Med Survival Suite · 2026</span>
+          <span aria-hidden>·</span>
+          <Link href="/privacy" className="transition-colors hover:text-[#8B949E]">
+            Privacy Policy
+          </Link>
+        </div>
       </div>
     </section>
   )
