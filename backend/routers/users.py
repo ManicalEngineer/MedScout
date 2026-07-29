@@ -216,7 +216,9 @@ def list_alert_subscriptions(
 
 
 @router.post("/me/alert-subscriptions", status_code=201)
+@limiter.limit("30/hour")
 def subscribe_to_alerts(
+    request: Request,
     body: AlertSubscriptionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -244,7 +246,9 @@ def subscribe_to_alerts(
 
 
 @router.delete("/me/alert-subscriptions", status_code=204)
+@limiter.limit("30/hour")
 def unsubscribe_from_alerts(
+    request: Request,
     body: AlertSubscriptionCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

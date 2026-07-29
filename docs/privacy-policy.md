@@ -1,7 +1,7 @@
 # MedScout Privacy Policy
 
-**Effective date:** [Insert date]  
-**Last updated:** [Insert date]
+**Effective date:** July 28, 2026  
+**Last updated:** July 28, 2026
 
 MedScout ("MedScout," "we," "us," or "our") helps people find medication availability, organize pharmacy calls, track refill information, and optionally contribute medication stock reports to the MedScout community.
 
@@ -209,9 +209,9 @@ Depending on where you live, you may have rights to:
 
 To make a privacy request, contact us at:
 
-**Privacy contact:** [Insert privacy email]  
-**Company:** [Insert legal company name]  
-**Address:** [Insert business address]
+**Privacy contact:** privacy@getmedscout.com  
+**Company:** MedScout  
+**Address:** 4 New Hampshire Ct, Rexford, NY 12148
 
 We may need to verify your identity before completing a request.
 
@@ -233,9 +233,9 @@ We may update this Privacy Policy from time to time. When we make material chang
 
 For privacy questions or requests, contact:
 
-**Email:** [Insert privacy email]  
-**Company:** [Insert legal company name]  
-**Website:** [Insert website]
+**Email:** privacy@getmedscout.com  
+**Company:** MedScout  
+**Website:** getmedscout.com
 
 ---
 
