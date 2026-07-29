@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { getToken, clearToken, setUnauthorizedHandler } from '../api/client';
 import { getMe, refreshSession, User } from '../api/auth';
-import { listProfiles } from '../storage/medicationProfiles';
+import { listProfiles, setActiveUserId } from '../storage/medicationProfiles';
 
 interface AuthContextType {
   user: User | null;
@@ -30,12 +30,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = async () => {
     try {
       const token = await getToken();
-      if (!token) { setUser(null); return; }
+      if (!token) { await setActiveUserId(null); setUser(null); return; }
       const me = await getMe();
+      // Must resolve before listProfiles() below, so profile storage reads
+      // from this account's namespaced key, not whatever was active before.
+      await setActiveUserId(me.id);
       setUser(me);
       setHasMedicationProfile((await listProfiles()).length > 0);
       refreshSession(); // fire-and-forget: slides the 7-day session forward
     } catch {
+      await setActiveUserId(null);
       setUser(null);
     }
   };
@@ -46,13 +50,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await clearToken();
+    await setActiveUserId(null);
     setUser(null);
   };
 
   // client.ts already clears the token when any request comes back 401 — this
   // just drops the in-memory user so AppNavigator swaps to the auth stack.
   useEffect(() => {
-    setUnauthorizedHandler(() => setUser(null));
+    setUnauthorizedHandler(() => { setActiveUserId(null); setUser(null); });
     return () => setUnauthorizedHandler(null);
   }, []);
 

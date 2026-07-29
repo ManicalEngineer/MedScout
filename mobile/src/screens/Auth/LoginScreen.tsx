@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { AntDesign } from '@expo/vector-icons';
 import { TOK } from '../../theme/tokens';
 import { Button } from '../../components/Button';
 import { login, register, oauthLogin } from '../../api/auth';
@@ -58,6 +59,7 @@ function GoogleSignInButton({
       onPress={() => promptGoogleAsync().catch((e: any) =>
         Alert.alert('Sign-in failed', e?.message || 'Something went wrong'))}
     >
+      <AntDesign name="google" size={18} color={TOK.text} style={styles.googleIcon} />
       <Text style={styles.googleBtnText}>Continue with Google</Text>
     </TouchableOpacity>
   );
@@ -249,8 +251,10 @@ const styles = StyleSheet.create({
   appleBtn: { height: 46, width: '100%' },
   googleBtn: {
     height: 46, borderRadius: 10, borderWidth: 1, borderColor: TOK.border,
-    backgroundColor: TOK.surface, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: TOK.surface, flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'center', gap: 10,
   },
+  googleIcon: { marginTop: -1 },
   googleBtnText: { fontSize: 15, fontWeight: '600', color: TOK.text },
   logo: { alignItems: 'center', gap: 8, marginBottom: 8 },
   logoIcon: { width: 108, height: 108 },

@@ -7,19 +7,40 @@
 import * as SecureStore from 'expo-secure-store';
 import { trackMedication, unsubscribeFromAlerts } from '../api/users';
 
-const STORAGE_KEY = 'medication_profiles';
+const LEGACY_STORAGE_KEY = 'medication_profiles';
 
-export interface MedicationProfile {
-  id: string;
-  medication_name: string;
-  strength: string;
-  formulation?: string;
-  is_child_profile: boolean;
-  child_name?: string;
+// Set by AuthContext whenever the signed-in user resolves (or clears on sign
+// out). Storage is scoped per account so two accounts on the same device
+// never see each other's medications — see setActiveUserId for the one-time
+// migration off the old device-wide key.
+let activeUserId: number | null = null;
+
+function keyFor(userId: number): string {
+  return `${LEGACY_STORAGE_KEY}:${userId}`;
+}
+
+/** Call whenever the signed-in user changes (including to null on sign out).
+ * The first account to resolve on a device after this update claims any
+ * pre-existing device-wide data — there's no way to know in hindsight which
+ * account it actually belonged to, since it was never tagged by user. */
+export async function setActiveUserId(userId: number | null): Promise<void> {
+  activeUserId = userId;
+  if (userId === null) return;
+
+  const namespacedKey = keyFor(userId);
+  const [existing, legacy] = await Promise.all([
+    SecureStore.getItemAsync(namespacedKey),
+    SecureStore.getItemAsync(LEGACY_STORAGE_KEY),
+  ]);
+  if (existing === null && legacy !== null) {
+    await SecureStore.setItemAsync(namespacedKey, legacy);
+    await SecureStore.deleteItemAsync(LEGACY_STORAGE_KEY);
+  }
 }
 
 async function readAll(): Promise<MedicationProfile[]> {
-  const raw = await SecureStore.getItemAsync(STORAGE_KEY);
+  if (activeUserId === null) return [];
+  const raw = await SecureStore.getItemAsync(keyFor(activeUserId));
   if (!raw) return [];
   try {
     return JSON.parse(raw);
@@ -29,7 +50,17 @@ async function readAll(): Promise<MedicationProfile[]> {
 }
 
 async function writeAll(profiles: MedicationProfile[]): Promise<void> {
-  await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(profiles));
+  if (activeUserId === null) return;
+  await SecureStore.setItemAsync(keyFor(activeUserId), JSON.stringify(profiles));
+}
+
+export interface MedicationProfile {
+  id: string;
+  medication_name: string;
+  strength: string;
+  formulation?: string;
+  is_child_profile: boolean;
+  child_name?: string;
 }
 
 export async function listProfiles(): Promise<MedicationProfile[]> {
