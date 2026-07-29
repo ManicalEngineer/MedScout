@@ -57,7 +57,13 @@
       "expo-apple-authentication",
       "expo-notifications",
       "./plugins/withFmtConstevalFix.js",
-      "@sentry/react-native"
+      [
+        "@sentry/react-native",
+        {
+          "organization": "medscout-53",
+          "project": "react-native"
+        }
+      ]
     ]
   }
 }
