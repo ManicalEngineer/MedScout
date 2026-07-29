@@ -14,13 +14,17 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.getmedscout.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.getmedscout.com/api/v1",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://1713a06616968987f6bf1dfb75ef9e9c@o4511816010956800.ingest.us.sentry.io/4511816070201344",
+        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "preview"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.getmedscout.com/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://api.getmedscout.com/api/v1",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://1713a06616968987f6bf1dfb75ef9e9c@o4511816010956800.ingest.us.sentry.io/4511816070201344",
+        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "production"
       }
     }
   },
