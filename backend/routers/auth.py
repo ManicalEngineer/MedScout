@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import Optional
@@ -14,6 +15,8 @@ from database import get_db
 from models import User, SubscriptionTier
 from rate_limit import limiter
 from timeutil import utcnow
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -134,8 +137,10 @@ def _verify_oauth_id_token(provider: str, id_token: str) -> dict:
 
     invalid = HTTPException(status_code=401, detail="Invalid identity token")
     try:
-        kid = jwt.get_unverified_header(id_token).get("kid")
-    except JWTError:
+        header = jwt.get_unverified_header(id_token)
+        kid = header.get("kid")
+    except JWTError as e:
+        logger.warning("%s oauth: malformed token header: %s", provider, e)
         raise invalid
 
     jwks = _get_jwks(config["jwks_url"])
@@ -145,16 +150,27 @@ def _verify_oauth_id_token(provider: str, id_token: str) -> dict:
         jwks = _get_jwks(config["jwks_url"], force_refresh=True)
         key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
     if key is None:
+        logger.warning("%s oauth: no matching JWKS key for kid=%s", provider, kid)
         raise invalid
 
     try:
         claims = jwt.decode(id_token, key, algorithms=["RS256"], audience=audience)
-    except JWTError:
+    except JWTError as e:
+        # Log the unverified claims too — a bad audience/issuer is the most
+        # common misconfiguration and jose's exception message alone doesn't
+        # show what the token actually contained vs. what we expected.
+        unverified = jwt.get_unverified_claims(id_token) if id_token else {}
+        logger.warning(
+            "%s oauth: token verification failed: %s (expected audience=%s, got aud=%s iss=%s)",
+            provider, e, audience, unverified.get("aud"), unverified.get("iss"),
+        )
         raise invalid
 
     if claims.get("iss") not in config["issuers"]:
+        logger.warning("%s oauth: unexpected issuer %s", provider, claims.get("iss"))
         raise invalid
     if not claims.get("sub"):
+        logger.warning("%s oauth: token missing sub claim", provider)
         raise invalid
     return claims
 
