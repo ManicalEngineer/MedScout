@@ -154,7 +154,14 @@ def _verify_oauth_id_token(provider: str, id_token: str) -> dict:
         raise invalid
 
     try:
-        claims = jwt.decode(id_token, key, algorithms=["RS256"], audience=audience)
+        # We only ever receive the id_token, never the access_token it was
+        # issued alongside — there's nothing to bind the at_hash claim to (and
+        # we don't need one; identity comes from signature + aud/iss/sub, not
+        # from proving possession of a matching access token).
+        claims = jwt.decode(
+            id_token, key, algorithms=["RS256"], audience=audience,
+            options={"verify_at_hash": False},
+        )
     except JWTError as e:
         # Log the unverified claims too — a bad audience/issuer is the most
         # common misconfiguration and jose's exception message alone doesn't
