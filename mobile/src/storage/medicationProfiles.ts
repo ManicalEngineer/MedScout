@@ -16,7 +16,8 @@ const LEGACY_STORAGE_KEY = 'medication_profiles';
 let activeUserId: number | null = null;
 
 function keyFor(userId: number): string {
-  return `${LEGACY_STORAGE_KEY}:${userId}`;
+  // SecureStore keys may only contain [A-Za-z0-9._-] — no colons.
+  return `${LEGACY_STORAGE_KEY}_${userId}`;
 }
 
 /** Call whenever the signed-in user changes (including to null on sign out).
