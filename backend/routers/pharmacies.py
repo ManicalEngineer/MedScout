@@ -453,7 +453,9 @@ def update_pharmacy(
 
 
 @router.delete("/{pharmacy_id}", status_code=204)
+@limiter.limit("60/hour")
 def delete_pharmacy(
+    request: Request,
     pharmacy_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -468,7 +470,9 @@ def delete_pharmacy(
 
 
 @router.post("/{pharmacy_id}/vault", status_code=200)
+@limiter.limit("60/hour")
 def toggle_vault(
+    request: Request,
     pharmacy_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

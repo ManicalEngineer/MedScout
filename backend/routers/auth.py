@@ -234,7 +234,9 @@ def refresh_token(request: Request, current_user: User = Depends(get_current_use
 
 
 @router.post("/logout-all", status_code=204)
+@limiter.limit("30/hour")
 def logout_all(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

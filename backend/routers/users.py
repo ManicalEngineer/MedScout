@@ -125,7 +125,9 @@ def get_me(current_user: User = Depends(get_current_user)):
 
 
 @router.patch("/me")
+@limiter.limit("30/hour")
 def update_me(
+    request: Request,
     body: UserUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -157,7 +159,9 @@ def get_refill_countdown(
 
 
 @router.put("/me/refill-countdown")
+@limiter.limit("30/hour")
 def update_refill_countdown(
+    request: Request,
     body: RefillCountdownUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -195,7 +199,9 @@ def get_alert_settings(
 
 
 @router.put("/me/alert-settings")
+@limiter.limit("30/hour")
 def update_alert_settings(
+    request: Request,
     body: AlertSettingsUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -284,7 +290,9 @@ def track_medication(
 
 
 @router.delete("/me", status_code=204)
+@limiter.limit("10/hour")
 def delete_me(
+    request: Request,
     body: DeleteAccountRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -296,6 +304,10 @@ def delete_me(
     by this at all. Any AvailabilityReport this user contributed stays —
     those are already anonymous (no user_id column) by design, so there's
     nothing of theirs left to remove from them.
+
+    Rate-limited tighter than sibling endpoints: the optional password check
+    below means an attacker with a stolen token could otherwise use this as a
+    password-guessing oracle.
     """
     if current_user.hashed_password:
         if not body.password or not verify_password(body.password, current_user.hashed_password):

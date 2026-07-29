@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from pydantic import BaseModel, Field
@@ -7,6 +7,7 @@ from datetime import datetime, date
 
 from database import get_db
 from models import CallLog, CallStatus, Pharmacy, AvailabilityReport, ReportSource, User, SubscriptionTier
+from rate_limit import limiter
 from routers.auth import get_current_user
 from timeutil import utcnow, ensure_utc
 from notifications import notify_restock
@@ -108,7 +109,9 @@ def list_call_logs(
 
 
 @router.post("/", status_code=201)
+@limiter.limit("60/hour")
 def create_call_log(
+    request: Request,
     body: CallLogCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -161,7 +164,9 @@ def get_call_log(
 
 
 @router.patch("/{call_id}")
+@limiter.limit("60/hour")
 def update_call_log(
+    request: Request,
     call_id: int,
     body: CallLogUpdate,
     db: Session = Depends(get_db),
@@ -205,7 +210,9 @@ def update_call_log(
 
 
 @router.delete("/{call_id}", status_code=204)
+@limiter.limit("60/hour")
 def delete_call_log(
+    request: Request,
     call_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
