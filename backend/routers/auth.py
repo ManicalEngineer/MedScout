@@ -128,8 +128,14 @@ def _verify_oauth_id_token(provider: str, id_token: str) -> dict:
     if not config:
         raise HTTPException(status_code=400, detail="provider must be 'apple' or 'google'")
 
-    audience = os.getenv(config["audience_env"], "")
-    if not audience:
+    # Comma-separated: a provider can issue tokens with different audiences per
+    # platform (e.g. Google's iOS and Android client IDs are different values,
+    # but either is a legitimate MedScout client). jose's audience check only
+    # accepts one string, so membership is checked manually below instead.
+    allowed_audiences = {
+        a.strip() for a in os.getenv(config["audience_env"], "").split(",") if a.strip()
+    }
+    if not allowed_audiences:
         raise HTTPException(
             status_code=503,
             detail=f"{provider} sign-in not configured (set {config['audience_env']})",
@@ -157,22 +163,26 @@ def _verify_oauth_id_token(provider: str, id_token: str) -> dict:
         # We only ever receive the id_token, never the access_token it was
         # issued alongside — there's nothing to bind the at_hash claim to (and
         # we don't need one; identity comes from signature + aud/iss/sub, not
-        # from proving possession of a matching access token).
+        # from proving possession of a matching access token). Audience is
+        # verified manually below (see allowed_audiences), not by jose.
         claims = jwt.decode(
-            id_token, key, algorithms=["RS256"], audience=audience,
-            options={"verify_at_hash": False},
+            id_token, key, algorithms=["RS256"],
+            options={"verify_at_hash": False, "verify_aud": False},
         )
     except JWTError as e:
-        # Log the unverified claims too — a bad audience/issuer is the most
-        # common misconfiguration and jose's exception message alone doesn't
-        # show what the token actually contained vs. what we expected.
         unverified = jwt.get_unverified_claims(id_token) if id_token else {}
         logger.warning(
-            "%s oauth: token verification failed: %s (expected audience=%s, got aud=%s iss=%s)",
-            provider, e, audience, unverified.get("aud"), unverified.get("iss"),
+            "%s oauth: token verification failed: %s (expected one of audiences=%s, got aud=%s iss=%s)",
+            provider, e, allowed_audiences, unverified.get("aud"), unverified.get("iss"),
         )
         raise invalid
 
+    if claims.get("aud") not in allowed_audiences:
+        logger.warning(
+            "%s oauth: unexpected audience %s (expected one of %s)",
+            provider, claims.get("aud"), allowed_audiences,
+        )
+        raise invalid
     if claims.get("iss") not in config["issuers"]:
         logger.warning("%s oauth: unexpected issuer %s", provider, claims.get("iss"))
         raise invalid

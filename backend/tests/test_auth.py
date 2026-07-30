@@ -114,6 +114,46 @@ def test_oauth_google_accepts_token_with_at_hash(client, monkeypatch):
     assert r.json()["access_token"]
 
 
+def test_oauth_google_accepts_either_of_multiple_audiences(client, monkeypatch):
+    """Regression test: iOS and Android use different Google OAuth client IDs,
+    so a token issued for either one must be accepted -- GOOGLE_OAUTH_CLIENT_ID
+    holds a comma-separated list, and membership is checked manually since
+    jose's built-in audience check only accepts a single string."""
+    import routers.auth as auth_module
+    auth_module._jwks_cache.clear()
+
+    ios_audience = "ios-client-id.apps.googleusercontent.com"
+    android_audience = "android-client-id.apps.googleusercontent.com"
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", f"{ios_audience},{android_audience}")
+
+    token, jwks = _make_id_token(android_audience)
+    with patch("routers.auth.httpx.get") as mock_get:
+        mock_get.return_value.raise_for_status.return_value = None
+        mock_get.return_value.json.return_value = jwks
+        r = client.post("/api/v1/auth/oauth", json={"provider": "google", "id_token": token})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["access_token"]
+
+
+def test_oauth_google_rejects_audience_outside_allowed_list(client, monkeypatch):
+    import routers.auth as auth_module
+    auth_module._jwks_cache.clear()
+
+    monkeypatch.setenv(
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "ios-client-id.apps.googleusercontent.com,android-client-id.apps.googleusercontent.com",
+    )
+
+    token, jwks = _make_id_token("some-other-apps-client-id.apps.googleusercontent.com")
+    with patch("routers.auth.httpx.get") as mock_get:
+        mock_get.return_value.raise_for_status.return_value = None
+        mock_get.return_value.json.return_value = jwks
+        r = client.post("/api/v1/auth/oauth", json={"provider": "google", "id_token": token})
+
+    assert r.status_code == 401
+
+
 def test_login_rate_limit(client):
     register(client, "a@test.com")
     codes = [
