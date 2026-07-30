@@ -65,8 +65,15 @@ function GoogleSignInButton({
   );
 }
 
+// Must check only the client ID for the platform actually running -- Google's
+// hook selects iosClientId vs. androidClientId based on Platform.OS, and
+// throws synchronously if whichever one it picks is missing. Checking "either
+// is set" (as opposed to "this platform's is set") let a build with only an
+// iOS client ID crash on Android launch instead of just hiding the button.
 const GOOGLE_CONFIGURED = !!(
-  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+  Platform.OS === 'ios'
+    ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+    : process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
 );
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Login'> };
