@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import posthog from 'posthog-js'
+import { Apple, ArrowUpRight, Check, Smartphone, X } from 'lucide-react'
 
 const perks = [
   { icon: '🗺️', label: 'Regional heatmaps' },
@@ -98,6 +99,10 @@ export function CTASection() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [androidEmail, setAndroidEmail] = useState('')
+  const [androidStatus, setAndroidStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [androidErrorMsg, setAndroidErrorMsg] = useState('')
+  const [isAndroidFormOpen, setIsAndroidFormOpen] = useState(false)
   const sectionRef = useRef<HTMLElement>(null)
   const hasFiredViewRef = useRef(false)
   const hasFiredFocusRef = useRef(false)
@@ -123,6 +128,58 @@ export function CTASection() {
     if (hasFiredFocusRef.current) return
     posthog.capture('cta_email_focused')
     hasFiredFocusRef.current = true
+  }
+
+  function handlePlatformClick(platform: 'ios' | 'android') {
+    posthog.capture('beta_cta_clicked', { platform })
+
+    if (platform === 'ios') {
+      const testFlightUrl = process.env.NEXT_PUBLIC_TESTFLIGHT_URL
+      if (testFlightUrl) {
+        window.open(testFlightUrl, '_blank', 'noopener,noreferrer')
+      } else {
+        setErrorMsg('TestFlight is not configured yet.')
+        setStatus('error')
+      }
+      return
+    }
+
+    setIsAndroidFormOpen(true)
+    setAndroidStatus('idle')
+    setAndroidErrorMsg('')
+  }
+
+  async function handleAndroidSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const normalizedEmail = androidEmail.trim()
+    if (!normalizedEmail) return
+
+    setAndroidStatus('loading')
+    setAndroidErrorMsg('')
+
+    try {
+      const res = await fetch('/api/beta/android', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Something went wrong')
+
+      posthog.capture('android_beta_requested', { email: normalizedEmail })
+      setAndroidStatus('success')
+    } catch (err) {
+      setAndroidStatus('error')
+      setAndroidErrorMsg(err instanceof Error ? err.message : 'Something went wrong')
+    }
+  }
+
+  function closeAndroidForm() {
+    if (androidStatus === 'loading') return
+    setIsAndroidFormOpen(false)
+    setAndroidStatus('idle')
+    setAndroidErrorMsg('')
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -206,6 +263,95 @@ export function CTASection() {
                 </div>
               ))}
             </div>
+
+            {/* Platform beta access */}
+            <div className="flex w-full flex-col gap-3 text-left">
+              <div>
+                <p className="text-sm font-semibold text-[#F0F6FC]">Get the app</p>
+                <p className="mt-1 text-sm text-[#8B949E]">Choose your platform to start testing MedScout.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => handlePlatformClick('ios')}
+                  className="group flex items-center justify-between rounded-xl border border-[#F97316]/40 bg-[#F97316]/10 px-4 py-4 text-left transition-colors hover:border-[#F97316] hover:bg-[#F97316]/20"
+                >
+                  <span className="flex items-center gap-3">
+                    <Apple className="h-5 w-5 text-[#F97316]" aria-hidden />
+                    <span>
+                      <span className="block font-semibold text-[#F0F6FC]">Download for iOS</span>
+                      <span className="block text-xs text-[#8B949E]">TestFlight</span>
+                    </span>
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 text-[#8B949E] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePlatformClick('android')}
+                  className="group flex items-center justify-between rounded-xl border border-[#30363D] bg-[#161B22] px-4 py-4 text-left transition-colors hover:border-[#F97316] hover:bg-[#1C2128]"
+                >
+                  <span className="flex items-center gap-3">
+                    <Smartphone className="h-5 w-5 text-[#F97316]" aria-hidden />
+                    <span>
+                      <span className="block font-semibold text-[#F0F6FC]">Join Android Beta</span>
+                      <span className="block text-xs text-[#8B949E]">Google Play closed testing</span>
+                    </span>
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 text-[#8B949E] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
+                </button>
+              </div>
+            </div>
+
+            {isAndroidFormOpen && (
+              <div className="w-full rounded-xl border border-[#30363D] bg-[#161B22] p-5 text-left">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold text-[#F0F6FC]">Join the Android beta</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-[#8B949E]">
+                      Enter the Google Account email you use on Google Play. We&apos;ll send an invite link once access is ready.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeAndroidForm}
+                    aria-label="Close Android beta form"
+                    className="rounded-md p-1 text-[#8B949E] transition-colors hover:bg-[#30363D] hover:text-[#F0F6FC]"
+                  >
+                    <X className="h-5 w-5" aria-hidden />
+                  </button>
+                </div>
+
+                {androidStatus === 'success' ? (
+                  <div className="mt-5 flex items-start gap-3 rounded-lg border border-[#22C55E]/20 bg-[#22C55E]/5 p-4">
+                    <Check className="mt-0.5 h-5 w-5 shrink-0 text-[#22C55E]" aria-hidden />
+                    <p className="text-sm leading-relaxed text-[#F0F6FC]">
+                      Success! We&apos;ve sent an invite link to your email. Check your inbox to accept the Google Play testing invite.
+                    </p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAndroidSubmit} className="mt-5 flex flex-col gap-3 sm:flex-row">
+                    <label htmlFor="android-beta-email" className="sr-only">Google Account email</label>
+                    <input
+                      id="android-beta-email"
+                      type="email"
+                      required
+                      value={androidEmail}
+                      onChange={(e) => setAndroidEmail(e.target.value)}
+                      placeholder="you@gmail.com"
+                      className="min-w-0 flex-1 rounded-lg border border-[#30363D] bg-[#0D1117] px-4 py-3 text-sm text-[#F0F6FC] placeholder-[#8B949E] outline-none transition-colors focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={androidStatus === 'loading'}
+                      className="rounded-lg bg-[#F97316] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#EA6C0A] disabled:opacity-60 whitespace-nowrap"
+                    >
+                      {androidStatus === 'loading' ? 'Requesting…' : 'Request access'}
+                    </button>
+                  </form>
+                )}
+                {androidStatus === 'error' && <p className="mt-3 text-sm text-[#EF4444]">{androidErrorMsg}</p>}
+              </div>
+            )}
 
             {/* Email form */}
             <form onSubmit={handleSubmit} className="flex w-full flex-col gap-3 sm:flex-row">
