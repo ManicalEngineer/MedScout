@@ -235,7 +235,7 @@ export function MapScreen() {
               {locationStatus === 'pending'
                 ? '📍 Getting your location…'
                 : locationStatus === 'denied'
-                  ? '📍 Location unavailable — showing all reports'
+                  ? '📍 Location unavailable, showing all reports'
                   : '📍 Showing reports near you'}
               {'\n'}
               <Text style={styles.mapSub}>Report list shown below</Text>

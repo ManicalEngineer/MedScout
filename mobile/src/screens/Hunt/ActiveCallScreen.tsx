@@ -139,8 +139,8 @@ export function ActiveCallScreen() {
     if (whisper.status === 'downloading') return `↓ Downloading Whisper ${Math.round(whisper.downloadProgress * 100)}%`;
     if (whisper.status === 'loading') return '⟳ Loading model…';
     if (callStatus === 'recording') return '☎ Dialing…';
-    if (callStatus === 'in_call') return "📞 On the phone — MedScout isn't listening";
-    if (callStatus === 'summarizing') return '🎙 Recording your summary — speak now, then tap Done';
+    if (callStatus === 'in_call') return "📞 On the phone: MedScout isn't listening";
+    if (callStatus === 'summarizing') return '🎙 Recording your summary: speak now, then tap Done';
     return '☎ Call + Record';
   };
 
@@ -167,7 +167,7 @@ export function ActiveCallScreen() {
         <View style={styles.statusRow}>
           <Animated.View style={[styles.statusDot, { opacity: isOnCall ? 1 : dotOpacity, backgroundColor: isRecording ? TOK.danger : isOnCall ? TOK.textMuted : TOK.success }]} />
           <Text style={[styles.statusText, { color: isRecording ? TOK.danger : isOnCall ? TOK.textMuted : TOK.success }]}>
-            {isRecording ? `Recording · ${fmt(elapsed)}` : isOnCall ? `On the phone — not recorded · ${fmt(elapsed)}` : `Ready · ${fmt(elapsed)}`}
+            {isRecording ? `Recording · ${fmt(elapsed)}` : isOnCall ? `On the phone, not recorded · ${fmt(elapsed)}` : `Ready · ${fmt(elapsed)}`}
           </Text>
         </View>
         {isOnCall && (
@@ -255,7 +255,7 @@ export function ActiveCallScreen() {
       </TouchableOpacity>
       {callStatus === 'idle' && (
         <Text style={styles.dialBtnSub}>
-          MedScout can't record the call itself — after you hang up, you'll speak a quick summary and it gets transcribed on-device.
+          MedScout can't record the call itself. After you hang up, you'll speak a quick summary and it gets transcribed on-device.
         </Text>
       )}
 
@@ -266,7 +266,7 @@ export function ActiveCallScreen() {
           onPress={callStatus === 'summarizing' ? finishSummary : skipToLog}
         >
           <Text style={styles.endIcon}>{callStatus === 'summarizing' ? '✓' : '📵'}</Text>
-          <Text style={styles.endLabel}>{callStatus === 'summarizing' ? 'Done — Save' : 'End & Log'}</Text>
+          <Text style={styles.endLabel}>{callStatus === 'summarizing' ? 'Done: Save' : 'End & Log'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl,
+  Platform, BackHandler, ToastAndroid,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -72,6 +73,24 @@ export function DashboardScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // Android only, and only while Home (the root tab) is focused -- every
+  // other screen keeps its normal back behavior. Double-press-to-exit avoids
+  // accidentally quitting the app on a single stray back tap.
+  useFocusEffect(useCallback(() => {
+    if (Platform.OS !== 'android') return;
+    const lastPressRef = { current: 0 };
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      const now = Date.now();
+      if (now - lastPressRef.current < 2000) {
+        return false; // let the default behavior (exit) proceed
+      }
+      lastPressRef.current = now;
+      ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+      return true; // handled -- don't exit yet
+    });
+    return () => sub.remove();
+  }, []));
+
   const onRefresh = async () => {
     setRefreshing(true);
     await load();
@@ -116,7 +135,7 @@ export function DashboardScreen() {
             {shortage.status === 'unavailable' ? '⚠ National shortage: ' : '⚠ Limited availability: '}
           </Text>
           <Text style={styles.bannerMuted}>
-            {shortage.detail || `${shortage.medication_name} is affected nationally — expect more calls than usual.`}
+            {shortage.detail || `${shortage.medication_name} is affected nationally. Expect more calls than usual.`}
           </Text>
           <TouchableOpacity onPress={() => setBannerDismissed(true)} style={styles.bannerDismiss}>
             <Text style={styles.bannerDismissText}>✕</Text>

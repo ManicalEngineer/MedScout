@@ -99,7 +99,7 @@ function StepWelcome() {
       <Text style={styles.stepTitle}>Welcome to MedScout</Text>
       <Text style={styles.stepBody}>Find your meds without the dread.</Text>
       <Text style={styles.stepBody2}>
-        Call pharmacies efficiently, log results, and find stock from the community — without sharing more than you want to.
+        Call pharmacies efficiently, log results, and find stock from the community, without sharing more than you want to.
       </Text>
     </View>
   );

@@ -196,7 +196,7 @@ export function PostCallScreen() {
               <View style={styles.transcriptHeader}>
                 <View style={styles.flex}>
                   <Text style={styles.transcriptBadge}>🎙 Whisper tiny.en · on-device</Text>
-                  <Text style={styles.transcriptSub}>Your spoken summary — not a recording of the pharmacy call</Text>
+                  <Text style={styles.transcriptSub}>Your spoken summary, not a recording of the pharmacy call</Text>
                 </View>
                 {!isTranscribing && transcript && (
                   <TouchableOpacity onPress={() => setEditingTranscript(e => !e)}>
@@ -208,7 +208,7 @@ export function PostCallScreen() {
               {!TRANSCRIPTION_SUPPORTED ? (
                 <View style={styles.transcriptEmpty}>
                   <Text style={styles.transcriptEmptyText}>
-                    On-device transcription isn't available on Android yet — log the outcome below.
+                    On-device transcription isn't available on Android yet. Log the outcome below.
                   </Text>
                 </View>
               ) : isTranscribing ? (

@@ -8,6 +8,7 @@ import { TOK } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Toggle } from '../../components/Toggle';
+import { PasswordInput } from '../../components/PasswordInput';
 import { ADHD_MEDS, MedicationOption, MedicationPickerFields } from '../../components/MedicationPicker';
 import { useAuth } from '../../context/AuthContext';
 import { deleteAccount, updateMe } from '../../api/auth';
@@ -112,7 +113,7 @@ export function ProfileScreen() {
     }
     Alert.alert(
       `Enable alerts for ${profile.medication_name}?`,
-      `This links your account to ${profile.medication_name} on our server so we can notify you when it's back in stock nearby. This is the only medication information tied to your identity — everything else stays on this device. Turn it off anytime.`,
+      `This links your account to ${profile.medication_name} on our server so we can notify you when it's back in stock nearby. This is the only medication information tied to your identity: everything else stays on this device. Turn it off anytime.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -175,10 +176,21 @@ export function ProfileScreen() {
     }
   };
 
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign out of MedScout?',
+      undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+      ],
+    );
+  };
+
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete account?',
-      'This permanently deletes your account, saved pharmacies, and call logs. Medication profiles stay on this device — remove them below if you want those gone too. This can\'t be undone.',
+      'This permanently deletes your account, saved pharmacies, and call logs. Medication profiles stay on this device. Remove them below if you want those gone too. This can\'t be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => setConfirmingDelete(true) },
@@ -241,7 +253,7 @@ export function ProfileScreen() {
             <Text style={styles.email}>{user?.email}</Text>
             <Text style={[styles.tier, { color: tierColor }]}>{tierLabel}</Text>
           </View>
-          <Button variant="ghost" size="sm" full={false} onPress={signOut}>
+          <Button variant="ghost" size="sm" full={false} onPress={handleSignOut}>
             Sign out
           </Button>
         </View>
@@ -429,13 +441,11 @@ export function ProfileScreen() {
         ) : (
           <View style={{ gap: 10 }}>
             {user?.has_password && (
-              <TextInput
+              <PasswordInput
                 style={styles.editInput}
                 value={deletePassword}
                 onChangeText={setDeletePassword}
                 placeholder="Enter your password"
-                placeholderTextColor={TOK.textDim}
-                secureTextEntry
                 autoFocus
               />
             )}
