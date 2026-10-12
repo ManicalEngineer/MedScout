@@ -40,6 +40,9 @@ class User(Base):
     # Bumping this invalidates every outstanding JWT for the user
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
     last_contribution_at = Column(DateTime(timezone=True), nullable=True)
+    # Count only — no linkage to which reports/pharmacies, keeping
+    # AvailabilityReport anonymity intact. Drives the Loops contributor_milestone event.
+    contribution_count = Column(Integer, default=0, nullable=False, server_default="0")
     push_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

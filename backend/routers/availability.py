@@ -12,6 +12,7 @@ from routers.auth import get_current_user
 from rate_limit import limiter
 from timeutil import utcnow, ensure_utc
 from notifications import notify_restock
+from loops import send_first_report_event, send_contributor_milestone_event, CONTRIBUTOR_MILESTONE_THRESHOLD
 
 router = APIRouter()
 
@@ -180,7 +181,8 @@ def submit_report(
     current_user: User = Depends(get_current_user),
 ):
     # Per-account throttle on top of the per-IP limit. Reports are stored
-    # anonymously, so last_contribution_at is the only per-user signal we keep.
+    # anonymously — last_contribution_at and contribution_count are the only
+    # per-user signals we keep, and neither links back to report content.
     if current_user.last_contribution_at:
         since_last = utcnow() - ensure_utc(current_user.last_contribution_at)
         if since_last < timedelta(seconds=REPORT_MIN_INTERVAL_SECONDS):
@@ -189,18 +191,25 @@ def submit_report(
                 detail="You're reporting too quickly — try again in a minute.",
             )
 
+    was_first = current_user.last_contribution_at is None
+
     report = AvailabilityReport(
         source=ReportSource.community,
         **body.model_dump(),
     )
     db.add(report)
     current_user.last_contribution_at = utcnow()
+    current_user.contribution_count = (current_user.contribution_count or 0) + 1
     # Auto-promote contributor tier
     if current_user.subscription_tier == SubscriptionTier.free:
         current_user.subscription_tier = SubscriptionTier.contributor
     db.commit()
     db.refresh(report)
     notify_restock(report, db, exclude_user_id=current_user.id)
+    if was_first:
+        send_first_report_event(current_user.email)
+    if current_user.contribution_count == CONTRIBUTOR_MILESTONE_THRESHOLD:
+        send_contributor_milestone_event(current_user.email, current_user.contribution_count)
     return _report_response(report)
 
 

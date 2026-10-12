@@ -14,6 +14,7 @@ from routers.auth import get_current_user
 from models import User
 from rate_limit import limiter
 from timeutil import utcnow, ensure_utc, UTC_MIN
+from loops import send_pharmacy_search_event
 
 router = APIRouter()
 
@@ -349,6 +350,9 @@ def nearby_pharmacies(
         })
 
     candidates.sort(key=lambda c: c["distance_miles"] or 9999)
+    # No medication/zipCode here by design — this app's search is GPS + Google
+    # Places (see AddPharmacyScreen), never a typed medication/zip combo.
+    send_pharmacy_search_event(current_user.email, len(candidates))
     return candidates
 
 
