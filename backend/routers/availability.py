@@ -188,7 +188,7 @@ def submit_report(
         if since_last < timedelta(seconds=REPORT_MIN_INTERVAL_SECONDS):
             raise HTTPException(
                 status_code=429,
-                detail="You're reporting too quickly — try again in a minute.",
+                detail="You're reporting too quickly. Try again in a minute.",
             )
 
     was_first = current_user.last_contribution_at is None
@@ -231,7 +231,7 @@ def get_heatmap(
             status_code=403,
             detail={
                 "code": "contribute_required",
-                "message": "Submit your fill status to unlock the regional map — takes 10 seconds.",
+                "message": "Submit your fill status to unlock the regional map. Takes 10 seconds.",
             },
         )
 

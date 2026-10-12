@@ -57,7 +57,7 @@ def run_refill_reminders(db: Session) -> None:
             _send_push(
                 [user.push_token],
                 "Time to start hunting",
-                f"Your {rc.medication_name} refill window is open — find a pharmacy with stock.",
+                f"Your {rc.medication_name} refill window is open. Find a pharmacy with stock.",
                 {"type": "refill_reminder", "refill_countdown_id": rc.id},
             )
             rc.last_reminder_sent_at = today
@@ -91,7 +91,7 @@ def run_checkback_reminders(db: Session) -> None:
             _send_push(
                 [user.push_token],
                 "Check back today",
-                f"{pharmacy_name} said they'd have more by now — worth a call.",
+                f"{pharmacy_name} said they'd have more by now. Worth a call.",
                 {"type": "checkback_reminder", "call_id": call.id},
             )
             call.checkback_reminder_sent_at = datetime.now(timezone.utc)

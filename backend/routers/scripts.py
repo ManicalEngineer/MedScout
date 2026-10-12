@@ -30,11 +30,11 @@ SCRIPTS = {
     "insurance": {
         "normal": (
             "Hi, I need to check stock availability and whether you accept {insurance} "
-            "for a controlled substance transfer — {strength} {name}."
+            "for a controlled substance transfer: {strength} {name}."
         ),
         "caregiver": (
             "Hi, I need to check stock and whether you accept {insurance} for a "
-            "controlled substance for my child — {strength} {name}."
+            "controlled substance for my child: {strength} {name}."
         ),
         "grumpy": "Do you have {strength} {name} and accept {insurance}?",
         "grumpy_caregiver": "Do you have {strength} {name} for a child and accept {insurance}?",
