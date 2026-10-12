@@ -6,6 +6,8 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOK } from '../theme/tokens';
 import { useAuth } from '../context/AuthContext';
+import { navigationIntegration } from '../services/sentryNavigation';
+import { useAppOpenedNoAction } from '../hooks/useAppOpenedNoAction';
 
 import { DashboardScreen } from '../screens/Dashboard/DashboardScreen';
 import { HuntScreen } from '../screens/Hunt/HuntScreen';
@@ -130,10 +132,16 @@ function TabNavigator() {
 
 export function AppNavigator() {
   const { user, loading, hasMedicationProfile } = useAuth();
+  const navigationRef = React.useRef(null);
+  const markNavAction = useAppOpenedNoAction(!!user);
   if (loading) return null;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => navigationIntegration.registerNavigationContainer(navigationRef)}
+      onStateChange={markNavAction}
+    >
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <RootStack.Screen name="Login" component={LoginScreen} />

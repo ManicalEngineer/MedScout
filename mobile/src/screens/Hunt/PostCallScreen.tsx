@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  Alert, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -115,10 +115,12 @@ export function PostCallScreen() {
   const whisper = useWhisper();
   const isTranscribing = whisper.status === 'transcribing' || whisper.status === 'downloading' || whisper.status === 'loading';
 
-  // Auto-transcribe on mount if we have an audio file
+  // Auto-transcribe on mount if we have an audio file. Deferred past the
+  // screen-transition/keyboard-dismiss animation from ActiveCallScreen — see
+  // the matching note in ActiveCallScreen.tsx on Sentry App Hang #7777594110.
   useEffect(() => {
     if (audioUri && TRANSCRIPTION_SUPPORTED) {
-      runTranscription(audioUri);
+      InteractionManager.runAfterInteractions(() => runTranscription(audioUri));
     }
   }, []);
 
@@ -228,6 +230,7 @@ export function PostCallScreen() {
                     onChangeText={setTranscript}
                     multiline
                     autoFocus
+                    editable={!isTranscribing}
                     placeholderTextColor={TOK.textDim}
                   />
                 ) : (
@@ -323,6 +326,7 @@ export function PostCallScreen() {
             placeholder="e.g. they'll hold 10 tablets, ask for the pharmacist"
             placeholderTextColor={TOK.textDim}
             multiline
+            editable={!isTranscribing}
           />
         </Card>
 

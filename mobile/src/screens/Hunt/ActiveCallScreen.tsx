@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated, Platform, TextInput,
+  View, Text, StyleSheet, TouchableOpacity, Animated, Platform, TextInput, InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -37,6 +37,12 @@ export function ActiveCallScreen() {
   const [activeProfile, setActiveProfile] = useState<MedicationProfile | null>(null);
   const dotOpacity = useRef(new Animated.Value(1)).current;
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
+  // Loading the ~75MB Whisper model while the script TextInput has focus was
+  // the leading theory for Sentry App Hang #7777594110 (memory-pressure
+  // stall surfacing during keyboard-dismiss animation commit) — so hold off
+  // starting it until the field isn't focused, not just until mount.
+  const scriptFocusedRef = useRef(false);
+  const whisperPreparedRef = useRef(false);
 
   const { status: callStatus, startCall, finishSummary, cancel } = useCallAndRecord({
     onCallReturned: (audioUri) => {
@@ -80,8 +86,16 @@ export function ActiveCallScreen() {
   // Pre-load Whisper model silently in background — Android can't transcribe
   // its own summary recordings (see PostCallScreen's TRANSCRIPTION_SUPPORTED),
   // so don't burn 75MB of downloads there for a feature that will never run.
+  const tryPrepareWhisper = () => {
+    if (whisperPreparedRef.current || scriptFocusedRef.current) return;
+    whisperPreparedRef.current = true;
+    InteractionManager.runAfterInteractions(() => {
+      whisper.prepare().catch(() => { whisperPreparedRef.current = false; });
+    });
+  };
+
   useEffect(() => {
-    if (Platform.OS === 'ios') whisper.prepare().catch(() => {});
+    if (Platform.OS === 'ios') tryPrepareWhisper();
   }, []);
 
   // Medication profiles live on-device only — load them once so the script
@@ -209,6 +223,8 @@ export function ActiveCallScreen() {
             multiline
             placeholder="Script…"
             placeholderTextColor={TOK.textDim}
+            onFocus={() => { scriptFocusedRef.current = true; }}
+            onBlur={() => { scriptFocusedRef.current = false; tryPrepareWhisper(); }}
           />
           <View style={styles.toneRow}>
             {TONES.map(t => (
