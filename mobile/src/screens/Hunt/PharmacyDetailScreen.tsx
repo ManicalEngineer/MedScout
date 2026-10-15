@@ -117,16 +117,31 @@ export function PharmacyDetailScreen() {
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       {/* Nav */}
       <View style={styles.nav}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={styles.navRight}>
           {!editing && (
-            <TouchableOpacity onPress={startEditing}>
+            <TouchableOpacity
+              onPress={startEditing}
+              hitSlop={{ top: 16, bottom: 16, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Edit pharmacy"
+            >
               <Text style={styles.editText}>Edit</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={handleDelete}>
+          <TouchableOpacity
+            onPress={handleDelete}
+            hitSlop={{ top: 16, bottom: 16, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Remove pharmacy"
+          >
             <Text style={styles.deleteText}>Remove</Text>
           </TouchableOpacity>
         </View>
@@ -253,7 +268,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8,
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 48, height: 48, borderRadius: 10,
     backgroundColor: TOK.surface, borderWidth: 1, borderColor: TOK.borderSoft,
     alignItems: 'center', justifyContent: 'center',
   },

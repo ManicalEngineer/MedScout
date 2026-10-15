@@ -106,7 +106,14 @@ export function AddPharmacyScreen() {
         </TouchableOpacity>
         <Text style={styles.title}>{mode === 'nearby' ? 'Nearby Pharmacies' : 'Add Manually'}</Text>
         {mode === 'nearby' ? (
-          <TouchableOpacity onPress={loadNearby} disabled={loading}>
+          <TouchableOpacity
+            onPress={loadNearby}
+            disabled={loading}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            accessibilityRole="button"
+            accessibilityLabel="Refresh nearby pharmacies"
+            accessibilityState={{ disabled: loading }}
+          >
             <Text style={[styles.refresh, loading && styles.refreshDim]}>↻</Text>
           </TouchableOpacity>
         ) : (
@@ -208,6 +215,9 @@ export function AddPharmacyScreen() {
                   ]}
                   onPress={() => addPharmacy(c)}
                   disabled={c.already_saved || !!adding}
+                  accessibilityRole="button"
+                  accessibilityLabel={c.already_saved ? `${c.name} already saved` : `Add ${c.name}`}
+                  accessibilityState={{ disabled: c.already_saved || !!adding }}
                 >
                   {isAdding ? (
                     <ActivityIndicator color={TOK.bg} size="small" />
@@ -269,7 +279,7 @@ const styles = StyleSheet.create({
   address: { fontSize: 12, color: TOK.textMuted, marginBottom: 2 },
   distance: { fontSize: 11, color: TOK.textDim },
   addBtn: {
-    width: 40, height: 40, borderRadius: 10,
+    width: 48, height: 48, borderRadius: 10,
     backgroundColor: TOK.primary,
     alignItems: 'center', justifyContent: 'center',
   },

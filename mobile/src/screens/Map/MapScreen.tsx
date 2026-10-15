@@ -244,7 +244,12 @@ export function MapScreen() {
         )}
 
         {/* Heatmap toggle */}
-        <TouchableOpacity style={[styles.heatmapBtn, !heatmapLocked && showHeatmap && styles.heatmapBtnActive]} onPress={handleHeatmapPress}>
+        <TouchableOpacity
+          style={[styles.heatmapBtn, !heatmapLocked && showHeatmap && styles.heatmapBtnActive]}
+          onPress={handleHeatmapPress}
+          accessibilityRole="button"
+          accessibilityLabel={heatmapLocked ? 'Heatmap, locked, contribute a report to unlock' : showHeatmap ? 'Hide heatmap' : 'Show heatmap'}
+        >
           <Text style={styles.heatmapBtnText}>{heatmapLocked ? '🔒' : '✦'} Heatmap</Text>
         </TouchableOpacity>
 

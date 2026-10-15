@@ -135,12 +135,19 @@ export function HuntScreen() {
           )}
         </View>
         <View style={styles.pharmActions}>
-          <TouchableOpacity style={styles.callBtn} onPress={() => callPharmacy(p)}>
+          <TouchableOpacity
+            style={styles.callBtn}
+            onPress={() => callPharmacy(p)}
+            accessibilityRole="button"
+            accessibilityLabel={`Call ${p.name}`}
+          >
             <Text style={styles.callBtnIcon}>☎</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.scriptBtn}
             onPress={() => navigation.navigate('ActiveCall', { pharmacyId: p.id, pharmacyName: p.name, pharmacyPhone: p.phone ?? '' })}
+            accessibilityRole="button"
+            accessibilityLabel={`Open call script for ${p.name}`}
           >
             <Text style={styles.scriptBtnIcon}>📋</Text>
           </TouchableOpacity>
@@ -165,7 +172,12 @@ export function HuntScreen() {
               <Text style={styles.recSub}>{p.distance_miles} mi away</Text>
             )}
           </View>
-          <TouchableOpacity style={styles.callBtnLg} onPress={() => callPharmacy(p)}>
+          <TouchableOpacity
+            style={styles.callBtnLg}
+            onPress={() => callPharmacy(p)}
+            accessibilityRole="button"
+            accessibilityLabel={`Call ${p.name}`}
+          >
             <Text style={styles.callBtnIcon}>☎</Text>
           </TouchableOpacity>
         </View>
@@ -305,7 +317,13 @@ export function HuntScreen() {
         )}
       </ScrollView>
 
-      <TouchableOpacity testID="add-pharmacy-fab" style={styles.fab} onPress={() => navigation.navigate('AddPharmacy')}>
+      <TouchableOpacity
+        testID="add-pharmacy-fab"
+        style={styles.fab}
+        onPress={() => navigation.navigate('AddPharmacy')}
+        accessibilityRole="button"
+        accessibilityLabel="Add pharmacy"
+      >
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
     </SafeAreaView>
@@ -366,13 +384,13 @@ const styles = StyleSheet.create({
   checkBackDate: { fontSize: 11, color: TOK.textMuted, marginTop: 4 },
   pharmActions: { flexDirection: 'row', gap: 8, marginLeft: 8 },
   callBtn: {
-    width: 44, height: 44, borderRadius: 10,
+    width: 48, height: 48, borderRadius: 10,
     backgroundColor: TOK.primaryDim, borderWidth: 1, borderColor: TOK.primary,
     alignItems: 'center', justifyContent: 'center',
   },
   callBtnIcon: { fontSize: 18, color: TOK.primary },
   scriptBtn: {
-    width: 44, height: 44, borderRadius: 10,
+    width: 48, height: 48, borderRadius: 10,
     backgroundColor: 'transparent', borderWidth: 1, borderColor: TOK.border,
     alignItems: 'center', justifyContent: 'center',
   },

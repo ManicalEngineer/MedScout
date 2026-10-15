@@ -137,7 +137,13 @@ export function DashboardScreen() {
           <Text style={styles.bannerMuted}>
             {shortage.detail || `${shortage.medication_name} is affected nationally. Expect more calls than usual.`}
           </Text>
-          <TouchableOpacity onPress={() => setBannerDismissed(true)} style={styles.bannerDismiss}>
+          <TouchableOpacity
+            onPress={() => setBannerDismissed(true)}
+            style={styles.bannerDismiss}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss shortage banner"
+          >
             <Text style={styles.bannerDismissText}>✕</Text>
           </TouchableOpacity>
         </View>

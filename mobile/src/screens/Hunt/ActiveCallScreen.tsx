@@ -153,7 +153,12 @@ export function ActiveCallScreen() {
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       {/* Nav */}
       <View style={styles.nav}>
-        <TouchableOpacity style={styles.backBtn} onPress={goBack}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
       </View>
@@ -195,7 +200,12 @@ export function ActiveCallScreen() {
 
       {/* Script card */}
       {collapsed ? (
-        <TouchableOpacity style={styles.scriptPill} onPress={() => setCollapsed(false)}>
+        <TouchableOpacity
+          style={styles.scriptPill}
+          onPress={() => setCollapsed(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Expand script"
+        >
           <Text style={styles.scriptPillText}>✦ Script</Text>
         </TouchableOpacity>
       ) : (
@@ -203,15 +213,25 @@ export function ActiveCallScreen() {
           <View style={styles.scriptCardHeader}>
             <Text style={styles.scriptLabel}>SCRIPT · TAP TO EDIT</Text>
             <View style={{ flexDirection: 'row', gap: 2 }}>
-              <TouchableOpacity onPress={() => getScript({
-                tone, pharmacy_id: pharmacyId,
-                medication_name: activeProfile?.medication_name,
-                strength: activeProfile?.strength,
-                is_child_profile: activeProfile?.is_child_profile,
-              }).then(s => setScriptText(s.text)).catch(() => {})}>
+              <TouchableOpacity
+                onPress={() => getScript({
+                  tone, pharmacy_id: pharmacyId,
+                  medication_name: activeProfile?.medication_name,
+                  strength: activeProfile?.strength,
+                  is_child_profile: activeProfile?.is_child_profile,
+                }).then(s => setScriptText(s.text)).catch(() => {})}
+                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                accessibilityRole="button"
+                accessibilityLabel="Regenerate script"
+              >
                 <Text style={styles.scriptBtn}>↻</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setCollapsed(true)}>
+              <TouchableOpacity
+                onPress={() => setCollapsed(true)}
+                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                accessibilityRole="button"
+                accessibilityLabel="Collapse script"
+              >
                 <Text style={styles.scriptBtn}>−</Text>
               </TouchableOpacity>
             </View>
@@ -247,6 +267,9 @@ export function ActiveCallScreen() {
         style={[styles.recordBtn, isRecording && styles.recordBtnActive]}
         onPress={callStatus === 'idle' ? callAndRecord : undefined}
         disabled={callStatus !== 'idle'}
+        accessibilityRole="button"
+        accessibilityLabel={recordLabel()}
+        accessibilityState={{ disabled: callStatus !== 'idle' }}
       >
         <Animated.View style={[styles.recordDot, { opacity: isOnCall ? 1 : dotOpacity, backgroundColor: isRecording ? TOK.danger : isOnCall ? TOK.textMuted : TOK.success }]} />
         <Text style={[styles.recordText, isRecording && styles.recordTextActive, isOnCall && styles.recordTextOnCall]}>
@@ -264,6 +287,8 @@ export function ActiveCallScreen() {
         <TouchableOpacity
           style={styles.endBtn}
           onPress={callStatus === 'summarizing' ? finishSummary : skipToLog}
+          accessibilityRole="button"
+          accessibilityLabel={callStatus === 'summarizing' ? 'Done, save' : 'End and log'}
         >
           <Text style={styles.endIcon}>{callStatus === 'summarizing' ? '✓' : '📵'}</Text>
           <Text style={styles.endLabel}>{callStatus === 'summarizing' ? 'Done: Save' : 'End & Log'}</Text>
@@ -277,7 +302,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: TOK.bg },
   nav: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 16 },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 48, height: 48, borderRadius: 10,
     backgroundColor: TOK.surface, borderWidth: 1, borderColor: TOK.borderSoft,
     alignItems: 'center', justifyContent: 'center',
   },

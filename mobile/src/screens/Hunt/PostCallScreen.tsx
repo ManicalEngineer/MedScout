@@ -16,6 +16,8 @@ import { logCall } from '../../api/calls';
 import { useWhisper } from '../../hooks/useWhisper';
 import { HuntStackParamList } from '../../navigation/AppNavigator';
 import { getActiveProfile } from '../../storage/medicationProfiles';
+import { useAuth } from '../../context/AuthContext';
+import { maybePromptForReview } from '../../services/reviewPrompt';
 
 type Nav = NativeStackNavigationProp<HuntStackParamList, 'PostCall'>;
 type Route = RouteProp<HuntStackParamList, 'PostCall'>;
@@ -103,6 +105,7 @@ export function PostCallScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { pharmacyId, audioUri, medicationName, strength } = route.params;
+  const { isFirstLaunchSession } = useAuth();
 
   const [status, setStatus] = useState('in_stock');
   const [contribute, setContribute] = useState(true);
@@ -169,6 +172,9 @@ export function PostCallScreen() {
         notes: notes.trim() || undefined,
       });
       await deleteAudio();
+      // Fire-and-forget: a good moment (pharmacy confirmed in stock), never
+      // blocks navigation on it either way.
+      if (effectiveStatus === 'in_stock') maybePromptForReview(isFirstLaunchSession);
       navigation.navigate('HuntMain');
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not save call log');
@@ -337,7 +343,7 @@ export function PostCallScreen() {
               <Text style={styles.contributeTitle}>Share with community</Text>
               <Text style={styles.contributeSub}>Anonymous. Unlocks heatmap 30 days. Your private note is never included.</Text>
             </View>
-            <Toggle value={contribute} onValueChange={setContribute} />
+            <Toggle value={contribute} onValueChange={setContribute} accessibilityLabel="Share with community" />
           </View>
         </Card>
       </ScrollView>
