@@ -13,6 +13,11 @@ export function HeroSection() {
         }}
       />
 
+      {/* Brand wordmark */}
+      <div className="absolute left-6 top-6 z-10 text-2xl font-bold tracking-tight text-[#F0F6FC] sm:left-10 sm:top-8 sm:text-3xl">
+        Med<span className="text-[#F97316]">Scout</span>
+      </div>
+
       <div className="relative z-10 flex max-w-3xl flex-col items-center gap-6">
         {/* Badge */}
         <span className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-[#30363D] bg-[#161B22] px-4 py-1.5 text-sm text-[#8B949E]">
