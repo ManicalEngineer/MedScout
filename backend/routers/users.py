@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from typing import Optional
@@ -7,8 +8,10 @@ from datetime import date, timedelta, datetime
 from database import get_db
 from models import (
     User, RefillCountdown, AlertSettings, MedicationAlertSubscription,
+    AvailabilityReport, ReportFlag, HiddenContributor,
     TrackedMedication, SubscriptionTier,
 )
+import apple_auth
 from rate_limit import limiter
 from routers.auth import get_current_user, verify_password
 from timeutil import utcnow, ensure_utc
@@ -301,9 +304,9 @@ def delete_me(
     Permanently deletes the account and everything attached to it (pharmacies,
     call logs, refill countdowns, alert settings) via the User model's cascade
     relationships. Medication profiles live on-device only and aren't touched
-    by this at all. Any AvailabilityReport this user contributed stays —
-    those are already anonymous (no user_id column) by design, so there's
-    nothing of theirs left to remove from them.
+    by this at all. Any AvailabilityReport this user contributed stays,
+    but its contributor link (used only for hide-contributor) is cleared, so
+    nothing identifying them is left on it.
 
     Rate-limited tighter than sibling endpoints: the optional password check
     below means an attacker with a stolen token could otherwise use this as a
@@ -312,5 +315,17 @@ def delete_me(
     if current_user.hashed_password:
         if not body.password or not verify_password(body.password, current_user.hashed_password):
             raise HTTPException(status_code=401, detail="Incorrect password")
+    # Apple requires revoking the Sign in with Apple token on deletion. Best
+    # effort: a failure is logged and must not leave the user unable to delete.
+    if current_user.apple_refresh_token:
+        apple_auth.revoke_refresh_token(current_user.apple_refresh_token)
+    # Explicit rather than relying on FK ondelete (SQLite doesn't enforce it):
+    # reports stay but lose their contributor link; flags and blocks go.
+    uid = current_user.id
+    db.query(AvailabilityReport).filter(AvailabilityReport.contributor_id == uid).update(
+        {AvailabilityReport.contributor_id: None})
+    db.query(ReportFlag).filter(ReportFlag.reporter_id == uid).delete()
+    db.query(HiddenContributor).filter(
+        or_(HiddenContributor.user_id == uid, HiddenContributor.contributor_id == uid)).delete()
     db.delete(current_user)
     db.commit()

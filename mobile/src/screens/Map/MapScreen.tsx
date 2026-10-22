@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -11,6 +11,7 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { api } from '../../api/client';
 import { listPharmacies, Pharmacy } from '../../api/pharmacies';
+import { flagReport, hideContributorOf, FlagReason } from '../../api/availability';
 
 // iOS renders a real Apple Maps view (no API key required). Android's native map
 // renderer is always backed by the Google Maps SDK, which needs a provisioned
@@ -30,6 +31,7 @@ interface MapReport {
   source: string;
   reported_at: string;
   trust_level: string;
+  can_hide_contributor?: boolean;
 }
 
 interface HeatmapEntry {
@@ -114,6 +116,63 @@ export function MapScreen() {
         setShowG2G(true);
       }
     }
+  };
+
+  const FLAG_REASON_OPTIONS: { label: string; reason: FlagReason }[] = [
+    { label: 'Wrong or out of date', reason: 'wrong_or_outdated' },
+    { label: 'Spam', reason: 'spam' },
+    { label: 'Abusive or inappropriate', reason: 'abusive' },
+  ];
+
+  const submitFlag = async (r: MapReport, reason: FlagReason) => {
+    try {
+      await flagReport(r.id, reason);
+      setReports(rs => rs.filter(x => x.id !== r.id));
+      Alert.alert('Thanks', 'We’ll review this report. It’s hidden from your list now.');
+    } catch (e: any) {
+      Alert.alert(
+        e?.status === 409 ? 'Already reported' : 'Couldn’t send report',
+        e?.status === 409 ? 'You’ve already reported this one.' : (e?.message ?? 'Try again in a moment.'),
+      );
+    }
+  };
+
+  const confirmHideContributor = (r: MapReport) => {
+    Alert.alert(
+      'Hide this contributor?',
+      'You won’t see any reports from whoever submitted this one. We don’t tell you or them who that is.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Hide',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await hideContributorOf(r.id);
+              await loadReports();
+            } catch (e: any) {
+              Alert.alert('Couldn’t hide contributor', e?.message ?? 'Try again in a moment.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const openReportMenu = (r: MapReport) => {
+    Alert.alert('Report this stock report', `${r.pharmacy_name} · ${r.medication_name}`, [
+      {
+        text: 'Report this report…',
+        onPress: () => Alert.alert('Why are you reporting it?', undefined, [
+          ...FLAG_REASON_OPTIONS.map(o => ({ text: o.label, onPress: () => submitFlag(r, o.reason) })),
+          { text: 'Cancel', style: 'cancel' as const },
+        ]),
+      },
+      ...(r.can_hide_contributor
+        ? [{ text: 'Hide reports from this contributor', onPress: () => confirmHideContributor(r) }]
+        : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
   };
 
   const handleHeatmapPress = () => {
@@ -346,6 +405,17 @@ export function MapScreen() {
               {selectedReport?.id === r.id && (
                 <Text style={styles.reportSrc}>Source: {r.source}</Text>
               )}
+              {r.source !== 'my_logs' && (
+                <TouchableOpacity
+                  style={styles.reportFlagBtn}
+                  onPress={() => openReportMenu(r)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Report or hide the stock report for ${r.pharmacy_name}`}
+                >
+                  <Text style={styles.reportFlagText}>Report</Text>
+                </TouchableOpacity>
+              )}
             </Card>
           </TouchableOpacity>
         ))}
@@ -421,6 +491,8 @@ const styles = StyleSheet.create({
   reportDot: { width: 6, height: 6, borderRadius: 3 },
   reportStatus: { fontSize: 12, fontWeight: '600', textTransform: 'capitalize' },
   reportMed: { fontSize: 11, color: TOK.textMuted, marginLeft: 4 },
+  reportFlagBtn: { alignSelf: 'flex-end', marginTop: 6 },
+  reportFlagText: { fontSize: 12, color: TOK.textDim, fontWeight: '600' },
   reportSrc: { fontSize: 11, color: TOK.textDim, marginTop: 6, fontStyle: 'italic' },
   zipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   zipCode: { fontSize: 13, fontWeight: '600', color: TOK.text, width: 54 },

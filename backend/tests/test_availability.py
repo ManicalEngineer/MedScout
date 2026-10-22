@@ -109,3 +109,86 @@ def test_map_my_logs_unaffected_by_gating(client, auth):
     body = r.json()
     assert body["community_locked"] is False
     assert any(item["source"] == "my_logs" for item in body["reports"])
+
+
+# --- Flagging / hiding contributors (App Store 1.2) ---
+
+def _third_user(client):
+    from conftest import register
+    return register(client, email="user3@test.com")
+
+
+def _fourth_user(client):
+    from conftest import register
+    return register(client, email="user4@test.com")
+
+
+def _community(client, headers):
+    return client.get("/api/v1/availability/map", headers=headers).json()["reports"]
+
+
+def test_flag_requires_valid_reason_and_is_once_per_user(client, auth, auth2):
+    rid = submit_report(client, auth2).json()["id"]
+    assert client.post(f"/api/v1/availability/reports/{rid}/flag", headers=auth, json={"reason": "nope"}).status_code == 422
+    assert client.post(f"/api/v1/availability/reports/{rid}/flag", headers=auth, json={"reason": "spam"}).status_code == 201
+    assert client.post(f"/api/v1/availability/reports/{rid}/flag", headers=auth, json={"reason": "spam"}).status_code == 409
+    assert client.post("/api/v1/availability/reports/9999/flag", headers=auth, json={"reason": "spam"}).status_code == 404
+
+
+def test_cannot_flag_own_report(client, auth):
+    rid = submit_report(client, auth).json()["id"]
+    assert client.post(f"/api/v1/availability/reports/{rid}/flag", headers=auth, json={"reason": "spam"}).status_code == 400
+
+
+def test_three_flags_from_different_users_auto_hide(client, auth, auth2):
+    rid = submit_report(client, auth2).json()["id"]
+    submit_report(client, auth)  # unlock community reports for auth
+    u3, u4 = _third_user(client), _fourth_user(client)
+    submit_report(client, u3)
+    submit_report(client, u4)
+    assert any(r["id"] == rid for r in _community(client, auth))
+    for h in (auth, u3):
+        r = client.post(f"/api/v1/availability/reports/{rid}/flag", headers=h, json={"reason": "wrong_or_outdated"})
+        assert r.json()["hidden"] is False
+    r = client.post(f"/api/v1/availability/reports/{rid}/flag", headers=u4, json={"reason": "abusive"})
+    assert r.json()["hidden"] is True
+    assert all(x["id"] != rid for x in _community(client, auth))
+    assert all(x["id"] != rid for x in _community(client, auth2))
+
+
+def test_hide_contributor_hides_all_their_reports_for_caller_only(client, auth, auth2):
+    r1 = submit_report(client, auth2).json()
+    submit_report(client, auth)  # unlock
+    assert r1["can_hide_contributor"] is True
+    assert "contributor_id" not in r1
+    assert client.post(f"/api/v1/availability/reports/{r1['id']}/hide-contributor", headers=auth).status_code == 204
+    # idempotent
+    assert client.post(f"/api/v1/availability/reports/{r1['id']}/hide-contributor", headers=auth).status_code == 204
+    assert all(x["id"] != r1["id"] for x in _community(client, auth))
+    # a later report by the same contributor is hidden too, but they and others still see theirs
+    import time  # noqa: F401
+    from database import SessionLocal
+    from models import User
+    db = SessionLocal(); db.query(User).filter(User.email == "user2@test.com").one().last_contribution_at = None; db.commit(); db.close()
+    r2 = submit_report(client, auth2).json()
+    assert all(x["id"] not in (r1["id"], r2["id"]) for x in _community(client, auth))
+    assert any(x["id"] == r2["id"] for x in _community(client, auth2))
+
+
+def test_cannot_hide_own_contributions(client, auth):
+    rid = submit_report(client, auth).json()["id"]
+    assert client.post(f"/api/v1/availability/reports/{rid}/hide-contributor", headers=auth).status_code == 400
+
+
+def test_deleting_contributor_clears_link_and_keeps_report(client, auth, auth2):
+    rid = submit_report(client, auth2).json()["id"]
+    submit_report(client, auth)
+    client.post(f"/api/v1/availability/reports/{rid}/hide-contributor", headers=auth)
+    r = client.request("DELETE", "/api/v1/users/me", headers=auth2, json={"password": "password123"})
+    assert r.status_code == 204
+    from database import SessionLocal
+    from models import AvailabilityReport, HiddenContributor
+    db = SessionLocal()
+    assert db.get(AvailabilityReport, rid).contributor_id is None
+    assert db.query(HiddenContributor).count() == 0
+    db.close()

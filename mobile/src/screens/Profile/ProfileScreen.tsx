@@ -23,6 +23,10 @@ import {
   registerForPushNotificationsAsync, refreshPushTokenIfPermitted,
 } from '../../services/pushNotifications';
 
+const PRIVACY_URL = 'https://getmedscout.com/privacy';
+const TERMS_URL = 'https://getmedscout.com/terms';
+const SUPPORT_EMAIL = 'support@getmedscout.com';
+
 const DEFAULT_ALERT_SETTINGS: AlertSettings = {
   radius_miles: 10, quiet_hours_start: 22, quiet_hours_end: 8,
 };
@@ -477,9 +481,31 @@ export function ProfileScreen() {
           accessibilityLabel="Send feedback"
           accessibilityHint="Opens your email app to send feedback to MedScout support"
         >
-          <Text style={styles.aboutKey}>Send feedback</Text>
+          <Text style={[styles.aboutKey, styles.aboutKeyWide]}>Send feedback</Text>
           <Text style={styles.feedbackArrow}>›</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.aboutRow, styles.feedbackRow]}
+          onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})}
+          accessibilityRole="link"
+          accessibilityLabel="Privacy Policy"
+        >
+          <Text style={[styles.aboutKey, styles.aboutKeyWide]}>Privacy Policy</Text>
+          <Text style={styles.feedbackArrow}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.aboutRow, styles.feedbackRow]}
+          onPress={() => Linking.openURL(TERMS_URL).catch(() => {})}
+          accessibilityRole="link"
+          accessibilityLabel="Terms of Service"
+        >
+          <Text style={[styles.aboutKey, styles.aboutKeyWide]}>Terms of Service</Text>
+          <Text style={styles.feedbackArrow}>›</Text>
+        </TouchableOpacity>
+        <View style={[styles.aboutRow, styles.feedbackRow]}>
+          <Text style={styles.aboutKey}>Support</Text>
+          <Text style={styles.aboutVal}>{SUPPORT_EMAIL}</Text>
+        </View>
       </Card>
 
       {/* Danger zone */}
@@ -598,6 +624,7 @@ const styles = StyleSheet.create({
   stepperBtnText: { fontSize: 16, color: TOK.text, lineHeight: 20 },
   stepperValue: { fontSize: 14, fontWeight: '600', color: TOK.text, minWidth: 44, textAlign: 'center' },
   aboutRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
+  aboutKeyWide: { width: undefined, flex: 1 },
   aboutKey: { fontSize: 13, fontWeight: '500', color: TOK.textMuted, width: 70 },
   aboutVal: { fontSize: 13, color: TOK.text, flex: 1, textAlign: 'right' },
   feedbackRow: {

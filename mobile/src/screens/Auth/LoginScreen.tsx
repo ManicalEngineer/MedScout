@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ScrollView, Alert, Keyboard, Image,
+  KeyboardAvoidingView, Platform, ScrollView, Alert, Keyboard, Image, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
@@ -135,10 +135,10 @@ export function LoginScreen({ navigation }: Props) {
     }
   }, []);
 
-  const handleOAuth = async (provider: 'google' | 'apple', idToken: string) => {
+  const handleOAuth = async (provider: 'google' | 'apple', idToken: string, authorizationCode?: string | null) => {
     setLoading(true);
     try {
-      await oauthLogin(provider, idToken);
+      await oauthLogin(provider, idToken, authorizationCode);
       await refresh();
     } catch (e: any) {
       Alert.alert('Sign-in failed', e.message || 'Something went wrong');
@@ -156,7 +156,7 @@ export function LoginScreen({ navigation }: Props) {
         ],
       });
       if (!credential.identityToken) throw new Error('Apple did not return an identity token');
-      await handleOAuth('apple', credential.identityToken);
+      await handleOAuth('apple', credential.identityToken, credential.authorizationCode);
     } catch (e: any) {
       if (e.code === 'ERR_REQUEST_CANCELED') return;
       Alert.alert('Sign-in failed', e.message || 'Something went wrong');
@@ -259,6 +259,13 @@ export function LoginScreen({ navigation }: Props) {
             onIdToken={(idToken) => handleOAuth('google', idToken)}
           />
         )}
+
+        <Text style={styles.legal}>
+          By continuing you agree to our{' '}
+          <Text style={styles.legalLink} accessibilityRole="link" onPress={() => Linking.openURL('https://getmedscout.com/terms').catch(() => {})}>Terms</Text>
+          {' '}and{' '}
+          <Text style={styles.legalLink} accessibilityRole="link" onPress={() => Linking.openURL('https://getmedscout.com/privacy').catch(() => {})}>Privacy Policy</Text>.
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
     </SafeAreaView>
@@ -283,6 +290,8 @@ const styles = StyleSheet.create({
   logo: { alignItems: 'center', gap: 8, marginBottom: 8 },
   logoIcon: { width: 108, height: 108 },
   logoText: { fontSize: 32, fontWeight: '700', color: TOK.text, letterSpacing: -1 },
+  legal: { fontSize: 12, color: TOK.textDim, textAlign: 'center', lineHeight: 18 },
+  legalLink: { color: TOK.primary, textDecorationLine: 'underline' },
   tagline: { fontSize: 14, color: TOK.textMuted },
   toggle: {
     flexDirection: 'row',

@@ -29,10 +29,14 @@ export async function login(email: string, password: string): Promise<void> {
   await setToken(data.access_token);
 }
 
-export async function oauthLogin(provider: 'google' | 'apple', idToken: string): Promise<void> {
+export async function oauthLogin(
+  provider: 'google' | 'apple',
+  idToken: string,
+  authorizationCode?: string | null,
+): Promise<void> {
   const data = await api.post<TokenResponse>(
     '/auth/oauth',
-    { provider, id_token: idToken, platform: Platform.OS },
+    { provider, id_token: idToken, authorization_code: authorizationCode ?? undefined, platform: Platform.OS },
     false,
   );
   await setToken(data.access_token);

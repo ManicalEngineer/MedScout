@@ -35,13 +35,15 @@ class User(Base):
     hashed_password = Column(String, nullable=True)  # nullable for OAuth users
     apple_sub = Column(String, unique=True, nullable=True, index=True)
     google_sub = Column(String, unique=True, nullable=True, index=True)
+    # Apple refresh token, kept only so account deletion can revoke it with Apple.
+    apple_refresh_token = Column(String, nullable=True)
     caregiver_mode = Column(Boolean, default=False)
     subscription_tier = Column(Enum(SubscriptionTier), default=SubscriptionTier.free)
     # Bumping this invalidates every outstanding JWT for the user
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
     last_contribution_at = Column(DateTime(timezone=True), nullable=True)
-    # Count only — no linkage to which reports/pharmacies, keeping
-    # AvailabilityReport anonymity intact. Drives the Loops contributor_milestone event.
+    # Count only — no linkage to which reports/pharmacies, so the count itself
+    # reveals nothing about report content. Drives the Loops contributor_milestone event.
     contribution_count = Column(Integer, default=0, nullable=False, server_default="0")
     push_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -140,6 +142,35 @@ class AvailabilityReport(Base):
     expected_restock_date = Column(Date, nullable=True)
     source = Column(Enum(ReportSource), default=ReportSource.community)
     reported_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    # Server-side only, never returned by any endpoint. Exists so a user can hide
+    # one contributor's reports (App Store 1.2 blocking). Nulled when the
+    # contributor deletes their account. NULL for reports predating this column.
+    contributor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Set when a report collects REPORT_HIDE_THRESHOLD flags; hidden until reviewed.
+    hidden_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+
+class ReportFlag(Base):
+    """A user flagging a community report. One flag per user per report."""
+    __tablename__ = "report_flags"
+    __table_args__ = (UniqueConstraint("report_id", "reporter_id", name="uq_report_flag_once"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    report_id = Column(Integer, ForeignKey("availability_reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    reporter_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reason = Column(String, nullable=False)  # one of FLAG_REASONS (validated in the router)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class HiddenContributor(Base):
+    """`user_id` never wants to see reports from `contributor_id` again."""
+    __tablename__ = "hidden_contributors"
+    __table_args__ = (UniqueConstraint("user_id", "contributor_id", name="uq_hidden_contributor_once"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    contributor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class ShortageStatus(Base):

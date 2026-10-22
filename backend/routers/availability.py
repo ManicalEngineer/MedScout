@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
+import logging
 from datetime import datetime, timedelta
 from math import radians, cos, sin, asin, sqrt
 
 from database import get_db
-from models import AvailabilityReport, CallLog, CallStatus, ReportSource, ShortageStatus, User, SubscriptionTier
+from models import (
+    AvailabilityReport, CallLog, CallStatus, HiddenContributor, ReportFlag, ReportSource,
+    ShortageStatus, User, SubscriptionTier,
+)
 from routers.auth import get_current_user
 from rate_limit import limiter
 from timeutil import utcnow, ensure_utc
@@ -15,6 +19,11 @@ from notifications import notify_restock
 from loops import send_first_report_event, send_contributor_milestone_event, CONTRIBUTOR_MILESTONE_THRESHOLD
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# A report flagged by this many different users is hidden until reviewed.
+REPORT_HIDE_THRESHOLD = 3
+FLAG_REASONS = ("wrong_or_outdated", "spam", "abusive")
 
 
 # --- Schemas ---
@@ -56,6 +65,9 @@ def _report_response(r: AvailabilityReport) -> dict:
         "source": r.source.value,
         "reported_at": ensure_utc(r.reported_at),
         "trust_level": _trust_level(r.reported_at),
+        # Lets the client offer "Hide reports from this contributor"; says
+        # nothing about who they are. contributor_id itself is never returned.
+        "can_hide_contributor": r.contributor_id is not None,
     }
 
 
@@ -145,7 +157,13 @@ def get_map_reports(
         q = db.query(AvailabilityReport).filter(
             AvailabilityReport.reported_at >= cutoff,
             AvailabilityReport.source.in_(report_sources),
+            AvailabilityReport.hidden_at.is_(None),
         )
+        hidden_ids = [h for (h,) in db.query(HiddenContributor.contributor_id)
+                      .filter(HiddenContributor.user_id == current_user.id).all()]
+        if hidden_ids:
+            q = q.filter(or_(AvailabilityReport.contributor_id.is_(None),
+                             AvailabilityReport.contributor_id.notin_(hidden_ids)))
         if medication_name:
             q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
         if strength:
@@ -180,9 +198,10 @@ def submit_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Per-account throttle on top of the per-IP limit. Reports are stored
-    # anonymously — last_contribution_at and contribution_count are the only
-    # per-user signals we keep, and neither links back to report content.
+    # Per-account throttle on top of the per-IP limit. Reports carry a
+    # server-side-only contributor_id (abuse handling and hide-contributor);
+    # it is never returned to clients. last_contribution_at and
+    # contribution_count are the other per-user signals and don't link to content.
     if current_user.last_contribution_at:
         since_last = utcnow() - ensure_utc(current_user.last_contribution_at)
         if since_last < timedelta(seconds=REPORT_MIN_INTERVAL_SECONDS):
@@ -195,6 +214,7 @@ def submit_report(
 
     report = AvailabilityReport(
         source=ReportSource.community,
+        contributor_id=current_user.id,
         **body.model_dump(),
     )
     db.add(report)
@@ -211,6 +231,74 @@ def submit_report(
     if current_user.contribution_count == CONTRIBUTOR_MILESTONE_THRESHOLD:
         send_contributor_milestone_event(current_user.email, current_user.contribution_count)
     return _report_response(report)
+
+
+class FlagCreate(BaseModel):
+    reason: Literal["wrong_or_outdated", "spam", "abusive"]
+
+
+@router.post("/reports/{report_id}/flag", status_code=201)
+@limiter.limit("30/hour")
+def flag_report(
+    request: Request,
+    report_id: int,
+    body: FlagCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Flag a community report. One flag per user per report; at
+    REPORT_HIDE_THRESHOLD flags from different users the report is hidden from
+    everyone until it is reviewed."""
+    report = db.get(AvailabilityReport, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if report.contributor_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You can't flag your own report")
+    if db.query(ReportFlag).filter_by(report_id=report_id, reporter_id=current_user.id).first():
+        raise HTTPException(status_code=409, detail="You already flagged this report")
+    db.add(ReportFlag(report_id=report_id, reporter_id=current_user.id, reason=body.reason))
+    db.flush()
+    count = db.query(ReportFlag).filter(ReportFlag.report_id == report_id).count()
+    auto_hidden = False
+    if count >= REPORT_HIDE_THRESHOLD and report.hidden_at is None:
+        report.hidden_at = utcnow()
+        auto_hidden = True
+    db.commit()
+    # Visible in server logs and (at WARNING) Sentry breadcrumbs; the auto-hide
+    # line is also sent to Sentry as a message so it surfaces without log access.
+    logger.warning("report_flagged report_id=%s reason=%s flags=%s", report_id, body.reason, count)
+    if auto_hidden:
+        logger.warning("report_auto_hidden report_id=%s flags=%s -- needs review", report_id, count)
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_message(f"MedScout report {report_id} auto-hidden after {count} flags", level="warning")
+        except Exception:
+            pass
+    return {"flagged": True, "hidden": report.hidden_at is not None}
+
+
+@router.post("/reports/{report_id}/hide-contributor", status_code=204)
+@limiter.limit("30/hour")
+def hide_contributor(
+    request: Request,
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Never show the caller reports from whoever submitted this one. The
+    contributor's identity is not revealed to the caller."""
+    report = db.get(AvailabilityReport, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    if report.contributor_id is None:
+        raise HTTPException(status_code=409, detail="This report can't be traced to a contributor")
+    if report.contributor_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You can't hide your own reports")
+    exists = db.query(HiddenContributor).filter_by(
+        user_id=current_user.id, contributor_id=report.contributor_id).first()
+    if not exists:
+        db.add(HiddenContributor(user_id=current_user.id, contributor_id=report.contributor_id))
+        db.commit()
 
 
 @router.get("/heatmap")
@@ -236,7 +324,9 @@ def get_heatmap(
         )
 
     cutoff = utcnow() - timedelta(days=30)
-    q = db.query(AvailabilityReport).filter(AvailabilityReport.reported_at >= cutoff)
+    q = db.query(AvailabilityReport).filter(
+        AvailabilityReport.reported_at >= cutoff, AvailabilityReport.hidden_at.is_(None),
+    )
     if medication_name:
         q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
     if strength:

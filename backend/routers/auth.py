@@ -16,6 +16,7 @@ from models import User, SubscriptionTier
 from rate_limit import limiter
 from timeutil import utcnow
 from loops import send_user_onboarded_event
+import apple_auth
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class RegisterRequest(BaseModel):
 class OAuthRequest(BaseModel):
     provider: str          # "apple" or "google"
     id_token: str
+    authorization_code: Optional[str] = None  # Apple only; exchanged so we can revoke on deletion
     caregiver_mode: bool = False
     platform: Optional[str] = None  # "ios" or "android", for the user_onboarded Loops event
 
@@ -296,6 +298,11 @@ def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_
         )
         db.add(user)
         is_new_account = True
+
+    if body.provider == "apple" and body.authorization_code:
+        refresh_token = apple_auth.exchange_code_for_refresh_token(body.authorization_code)
+        if refresh_token:
+            user.apple_refresh_token = refresh_token
 
     db.commit()
     db.refresh(user)

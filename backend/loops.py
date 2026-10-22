@@ -1,7 +1,6 @@
 """Loops.so lifecycle email trigger — fires once when a user transitions from
 never-contributed to contributed. Never sees report content: only email,
-event name, and the hasContributed flag cross this boundary, keeping
-AvailabilityReport anonymity intact.
+event name, and the hasContributed flag cross this boundary.
 """
 import logging
 import os

@@ -168,11 +168,12 @@ export default function PrivacyPolicyPage() {
         <li>Expected restock information</li>
       </UL>
       <P>
-        This data is collected anonymously from the moment you submit it &mdash; a community
-        report is never linked to your account or identity in our systems in the first place, so
-        there is no identifying information to remove before sharing it. We do not sell the
-        contributor&rsquo;s identity or provide buyers with a way to look up who submitted a
-        report.
+        Community availability reports are never shown with your name, email, or any profile. We
+        store an internal link between a report and your account only to prevent abuse, such as
+        letting users hide reports from a contributor or removing bad-faith reports. That link is
+        never shared with other users or third parties, and it is deleted when you delete your
+        account. We do not sell the contributor&rsquo;s identity or provide buyers with a way to
+        look up who submitted a report.
       </P>
       <P>Commercial customers may use this information for purposes such as:</P>
       <UL>

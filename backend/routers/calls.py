@@ -82,6 +82,7 @@ def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User
         status=call.status,
         expected_restock_date=call.expected_restock_date,
         source=ReportSource.community,
+        contributor_id=user.id,
     )
     db.add(report)
     db.flush()
