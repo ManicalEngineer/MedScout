@@ -5,11 +5,19 @@ import { TOK } from '../theme/tokens';
 interface ToggleProps {
   value: boolean;
   onValueChange?: (v: boolean) => void;
+  accessibilityLabel?: string;
 }
 
-export function Toggle({ value, onValueChange }: ToggleProps) {
+export function Toggle({ value, onValueChange, accessibilityLabel }: ToggleProps) {
   return (
-    <TouchableOpacity onPress={() => onValueChange?.(!value)} activeOpacity={0.8}>
+    <TouchableOpacity
+      onPress={() => onValueChange?.(!value)}
+      activeOpacity={0.8}
+      hitSlop={{ top: 13, bottom: 13, left: 5, right: 5 }}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      accessibilityLabel={accessibilityLabel}
+    >
       <View style={[styles.track, value && styles.trackOn]}>
         <View style={[styles.thumb, value && styles.thumbOn]} />
       </View>

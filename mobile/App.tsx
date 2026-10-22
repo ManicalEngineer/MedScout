@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { configureForegroundNotifications } from './src/services/pushNotifications';
+import { navigationIntegration } from './src/services/sentryNavigation';
 
 configureForegroundNotifications();
 
@@ -15,6 +16,10 @@ if (sentryDsn) {
     dsn: sentryDsn,
     environment: process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ?? 'production',
     tracesSampleRate: 0.1,
+    // Attaches a CPU profile to traces/hangs so an App Hang event shows real
+    // app-code frames instead of only OS/UIKit frames.
+    profilesSampleRate: 0.1,
+    integrations: [navigationIntegration],
   });
 }
 

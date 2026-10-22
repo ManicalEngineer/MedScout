@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated, Platform, TextInput,
+  View, Text, StyleSheet, TouchableOpacity, Animated, Platform, TextInput, InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -37,6 +37,12 @@ export function ActiveCallScreen() {
   const [activeProfile, setActiveProfile] = useState<MedicationProfile | null>(null);
   const dotOpacity = useRef(new Animated.Value(1)).current;
   const animRef = useRef<Animated.CompositeAnimation | null>(null);
+  // Loading the ~75MB Whisper model while the script TextInput has focus was
+  // the leading theory for Sentry App Hang #7777594110 (memory-pressure
+  // stall surfacing during keyboard-dismiss animation commit) — so hold off
+  // starting it until the field isn't focused, not just until mount.
+  const scriptFocusedRef = useRef(false);
+  const whisperPreparedRef = useRef(false);
 
   const { status: callStatus, startCall, finishSummary, cancel } = useCallAndRecord({
     onCallReturned: (audioUri) => {
@@ -80,8 +86,16 @@ export function ActiveCallScreen() {
   // Pre-load Whisper model silently in background — Android can't transcribe
   // its own summary recordings (see PostCallScreen's TRANSCRIPTION_SUPPORTED),
   // so don't burn 75MB of downloads there for a feature that will never run.
+  const tryPrepareWhisper = () => {
+    if (whisperPreparedRef.current || scriptFocusedRef.current) return;
+    whisperPreparedRef.current = true;
+    InteractionManager.runAfterInteractions(() => {
+      whisper.prepare().catch(() => { whisperPreparedRef.current = false; });
+    });
+  };
+
   useEffect(() => {
-    if (Platform.OS === 'ios') whisper.prepare().catch(() => {});
+    if (Platform.OS === 'ios') tryPrepareWhisper();
   }, []);
 
   // Medication profiles live on-device only — load them once so the script
@@ -125,8 +139,8 @@ export function ActiveCallScreen() {
     if (whisper.status === 'downloading') return `↓ Downloading Whisper ${Math.round(whisper.downloadProgress * 100)}%`;
     if (whisper.status === 'loading') return '⟳ Loading model…';
     if (callStatus === 'recording') return '☎ Dialing…';
-    if (callStatus === 'in_call') return "📞 On the phone — MedScout isn't listening";
-    if (callStatus === 'summarizing') return '🎙 Recording your summary — speak now, then tap Done';
+    if (callStatus === 'in_call') return "📞 On the phone: MedScout isn't listening";
+    if (callStatus === 'summarizing') return '🎙 Recording your summary: speak now, then tap Done';
     return '☎ Call + Record';
   };
 
@@ -139,7 +153,12 @@ export function ActiveCallScreen() {
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       {/* Nav */}
       <View style={styles.nav}>
-        <TouchableOpacity style={styles.backBtn} onPress={goBack}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
       </View>
@@ -153,7 +172,7 @@ export function ActiveCallScreen() {
         <View style={styles.statusRow}>
           <Animated.View style={[styles.statusDot, { opacity: isOnCall ? 1 : dotOpacity, backgroundColor: isRecording ? TOK.danger : isOnCall ? TOK.textMuted : TOK.success }]} />
           <Text style={[styles.statusText, { color: isRecording ? TOK.danger : isOnCall ? TOK.textMuted : TOK.success }]}>
-            {isRecording ? `Recording · ${fmt(elapsed)}` : isOnCall ? `On the phone — not recorded · ${fmt(elapsed)}` : `Ready · ${fmt(elapsed)}`}
+            {isRecording ? `Recording · ${fmt(elapsed)}` : isOnCall ? `On the phone, not recorded · ${fmt(elapsed)}` : `Ready · ${fmt(elapsed)}`}
           </Text>
         </View>
         {isOnCall && (
@@ -181,7 +200,12 @@ export function ActiveCallScreen() {
 
       {/* Script card */}
       {collapsed ? (
-        <TouchableOpacity style={styles.scriptPill} onPress={() => setCollapsed(false)}>
+        <TouchableOpacity
+          style={styles.scriptPill}
+          onPress={() => setCollapsed(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Expand script"
+        >
           <Text style={styles.scriptPillText}>✦ Script</Text>
         </TouchableOpacity>
       ) : (
@@ -189,15 +213,25 @@ export function ActiveCallScreen() {
           <View style={styles.scriptCardHeader}>
             <Text style={styles.scriptLabel}>SCRIPT · TAP TO EDIT</Text>
             <View style={{ flexDirection: 'row', gap: 2 }}>
-              <TouchableOpacity onPress={() => getScript({
-                tone, pharmacy_id: pharmacyId,
-                medication_name: activeProfile?.medication_name,
-                strength: activeProfile?.strength,
-                is_child_profile: activeProfile?.is_child_profile,
-              }).then(s => setScriptText(s.text)).catch(() => {})}>
+              <TouchableOpacity
+                onPress={() => getScript({
+                  tone, pharmacy_id: pharmacyId,
+                  medication_name: activeProfile?.medication_name,
+                  strength: activeProfile?.strength,
+                  is_child_profile: activeProfile?.is_child_profile,
+                }).then(s => setScriptText(s.text)).catch(() => {})}
+                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                accessibilityRole="button"
+                accessibilityLabel="Regenerate script"
+              >
                 <Text style={styles.scriptBtn}>↻</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setCollapsed(true)}>
+              <TouchableOpacity
+                onPress={() => setCollapsed(true)}
+                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                accessibilityRole="button"
+                accessibilityLabel="Collapse script"
+              >
                 <Text style={styles.scriptBtn}>−</Text>
               </TouchableOpacity>
             </View>
@@ -209,6 +243,8 @@ export function ActiveCallScreen() {
             multiline
             placeholder="Script…"
             placeholderTextColor={TOK.textDim}
+            onFocus={() => { scriptFocusedRef.current = true; }}
+            onBlur={() => { scriptFocusedRef.current = false; tryPrepareWhisper(); }}
           />
           <View style={styles.toneRow}>
             {TONES.map(t => (
@@ -231,6 +267,9 @@ export function ActiveCallScreen() {
         style={[styles.recordBtn, isRecording && styles.recordBtnActive]}
         onPress={callStatus === 'idle' ? callAndRecord : undefined}
         disabled={callStatus !== 'idle'}
+        accessibilityRole="button"
+        accessibilityLabel={recordLabel()}
+        accessibilityState={{ disabled: callStatus !== 'idle' }}
       >
         <Animated.View style={[styles.recordDot, { opacity: isOnCall ? 1 : dotOpacity, backgroundColor: isRecording ? TOK.danger : isOnCall ? TOK.textMuted : TOK.success }]} />
         <Text style={[styles.recordText, isRecording && styles.recordTextActive, isOnCall && styles.recordTextOnCall]}>
@@ -239,7 +278,7 @@ export function ActiveCallScreen() {
       </TouchableOpacity>
       {callStatus === 'idle' && (
         <Text style={styles.dialBtnSub}>
-          MedScout can't record the call itself — after you hang up, you'll speak a quick summary and it gets transcribed on-device.
+          MedScout can't record the call itself. After you hang up, you'll speak a quick summary and it gets transcribed on-device.
         </Text>
       )}
 
@@ -248,9 +287,11 @@ export function ActiveCallScreen() {
         <TouchableOpacity
           style={styles.endBtn}
           onPress={callStatus === 'summarizing' ? finishSummary : skipToLog}
+          accessibilityRole="button"
+          accessibilityLabel={callStatus === 'summarizing' ? 'Done, save' : 'End and log'}
         >
           <Text style={styles.endIcon}>{callStatus === 'summarizing' ? '✓' : '📵'}</Text>
-          <Text style={styles.endLabel}>{callStatus === 'summarizing' ? 'Done — Save' : 'End & Log'}</Text>
+          <Text style={styles.endLabel}>{callStatus === 'summarizing' ? 'Done: Save' : 'End & Log'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -261,7 +302,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: TOK.bg },
   nav: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 16 },
   backBtn: {
-    width: 36, height: 36, borderRadius: 10,
+    width: 48, height: 48, borderRadius: 10,
     backgroundColor: TOK.surface, borderWidth: 1, borderColor: TOK.borderSoft,
     alignItems: 'center', justifyContent: 'center',
   },

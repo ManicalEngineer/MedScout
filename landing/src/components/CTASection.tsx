@@ -390,6 +390,10 @@ export function CTASection() {
           <Link href="/privacy" className="transition-colors hover:text-[#8B949E]">
             Privacy Policy
           </Link>
+          <span aria-hidden>·</span>
+          <Link href="/terms" className="transition-colors hover:text-[#8B949E]">
+            Terms
+          </Link>
         </div>
       </div>
     </section>

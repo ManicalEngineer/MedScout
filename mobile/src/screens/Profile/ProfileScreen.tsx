@@ -1,13 +1,15 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Linking, Platform,
 } from 'react-native';
+import * as Application from 'expo-application';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { TOK } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Toggle } from '../../components/Toggle';
+import { PasswordInput } from '../../components/PasswordInput';
 import { ADHD_MEDS, MedicationOption, MedicationPickerFields } from '../../components/MedicationPicker';
 import { useAuth } from '../../context/AuthContext';
 import { deleteAccount, updateMe } from '../../api/auth';
@@ -112,7 +114,7 @@ export function ProfileScreen() {
     }
     Alert.alert(
       `Enable alerts for ${profile.medication_name}?`,
-      `This links your account to ${profile.medication_name} on our server so we can notify you when it's back in stock nearby. This is the only medication information tied to your identity — everything else stays on this device. Turn it off anytime.`,
+      `This links your account to ${profile.medication_name} on our server so we can notify you when it's back in stock nearby. This is the only medication information tied to your identity: everything else stays on this device. Turn it off anytime.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -175,10 +177,35 @@ export function ProfileScreen() {
     }
   };
 
+  const handleSendFeedback = async () => {
+    const version = Application.nativeApplicationVersion ?? 'unknown';
+    const build = Application.nativeBuildVersion ?? 'unknown';
+    const body = `\n\n---\nPlease don't remove the line below, it helps us troubleshoot:\nMedScout ${version} (${build}) · ${Platform.OS} ${Platform.Version}`;
+    const url = `mailto:support@getmedscout.com?subject=${encodeURIComponent('MedScout feedback')}&body=${encodeURIComponent(body)}`;
+    try {
+      const can = await Linking.canOpenURL(url);
+      if (!can) { Alert.alert('No email app found', 'Email support@getmedscout.com directly.'); return; }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Couldn’t open email', 'Email support@getmedscout.com directly.');
+    }
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign out of MedScout?',
+      undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+      ],
+    );
+  };
+
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete account?',
-      'This permanently deletes your account, saved pharmacies, and call logs. Medication profiles stay on this device — remove them below if you want those gone too. This can\'t be undone.',
+      'This permanently deletes your account, saved pharmacies, and call logs. Medication profiles stay on this device. Remove them below if you want those gone too. This can\'t be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: () => setConfirmingDelete(true) },
@@ -241,7 +268,7 @@ export function ProfileScreen() {
             <Text style={styles.email}>{user?.email}</Text>
             <Text style={[styles.tier, { color: tierColor }]}>{tierLabel}</Text>
           </View>
-          <Button variant="ghost" size="sm" full={false} onPress={signOut}>
+          <Button variant="ghost" size="sm" full={false} onPress={handleSignOut}>
             Sign out
           </Button>
         </View>
@@ -265,7 +292,12 @@ export function ProfileScreen() {
                   <Text style={styles.childLabel}>For {p.child_name}</Text>
                 )}
               </View>
-              <TouchableOpacity onPress={() => handleDeleteProfile(p.id, p.medication_name)}>
+              <TouchableOpacity
+                onPress={() => handleDeleteProfile(p.id, p.medication_name)}
+                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${p.medication_name} profile`}
+              >
                 <Text style={styles.removeBtn}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -324,6 +356,7 @@ export function ProfileScreen() {
               <Toggle
                 value={isSubscribed(p)}
                 onValueChange={(v) => handleToggleAlert(p, v)}
+                accessibilityLabel={`Notify when ${p.medication_name} is back in stock`}
               />
             </View>
           </Card>
@@ -351,14 +384,20 @@ export function ProfileScreen() {
               <View style={styles.stepper}>
                 <TouchableOpacity
                   style={styles.stepperBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => patchAlertSettings({ radius_miles: Math.max(1, alertSettings.radius_miles - 1) })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Decrease alert radius"
                 >
                   <Text style={styles.stepperBtnText}>−</Text>
                 </TouchableOpacity>
                 <Text style={styles.stepperValue}>{alertSettings.radius_miles} mi</Text>
                 <TouchableOpacity
                   style={styles.stepperBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => patchAlertSettings({ radius_miles: alertSettings.radius_miles + 1 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Increase alert radius"
                 >
                   <Text style={styles.stepperBtnText}>+</Text>
                 </TouchableOpacity>
@@ -370,14 +409,20 @@ export function ProfileScreen() {
               <View style={styles.stepper}>
                 <TouchableOpacity
                   style={styles.stepperBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => patchAlertSettings({ quiet_hours_start: (alertSettings.quiet_hours_start + 23) % 24 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Move quiet hours start earlier"
                 >
                   <Text style={styles.stepperBtnText}>−</Text>
                 </TouchableOpacity>
                 <Text style={styles.stepperValue}>{formatHour(alertSettings.quiet_hours_start)}</Text>
                 <TouchableOpacity
                   style={styles.stepperBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => patchAlertSettings({ quiet_hours_start: (alertSettings.quiet_hours_start + 1) % 24 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Move quiet hours start later"
                 >
                   <Text style={styles.stepperBtnText}>+</Text>
                 </TouchableOpacity>
@@ -389,14 +434,20 @@ export function ProfileScreen() {
               <View style={styles.stepper}>
                 <TouchableOpacity
                   style={styles.stepperBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => patchAlertSettings({ quiet_hours_end: (alertSettings.quiet_hours_end + 23) % 24 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Move quiet hours end earlier"
                 >
                   <Text style={styles.stepperBtnText}>−</Text>
                 </TouchableOpacity>
                 <Text style={styles.stepperValue}>{formatHour(alertSettings.quiet_hours_end)}</Text>
                 <TouchableOpacity
                   style={styles.stepperBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   onPress={() => patchAlertSettings({ quiet_hours_end: (alertSettings.quiet_hours_end + 1) % 24 })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Move quiet hours end later"
                 >
                   <Text style={styles.stepperBtnText}>+</Text>
                 </TouchableOpacity>
@@ -415,8 +466,20 @@ export function ProfileScreen() {
         </View>
         <View style={[styles.aboutRow, { borderTopWidth: 0.5, borderTopColor: TOK.borderSoft, marginTop: 8, paddingTop: 8 }]}>
           <Text style={styles.aboutKey}>Version</Text>
-          <Text style={styles.aboutVal}>1.0.0</Text>
+          <Text style={styles.aboutVal}>
+            {Application.nativeApplicationVersion ?? 'unknown'} ({Application.nativeBuildVersion ?? 'unknown'})
+          </Text>
         </View>
+        <TouchableOpacity
+          style={[styles.aboutRow, styles.feedbackRow]}
+          onPress={handleSendFeedback}
+          accessibilityRole="button"
+          accessibilityLabel="Send feedback"
+          accessibilityHint="Opens your email app to send feedback to MedScout support"
+        >
+          <Text style={styles.aboutKey}>Send feedback</Text>
+          <Text style={styles.feedbackArrow}>›</Text>
+        </TouchableOpacity>
       </Card>
 
       {/* Danger zone */}
@@ -429,13 +492,11 @@ export function ProfileScreen() {
         ) : (
           <View style={{ gap: 10 }}>
             {user?.has_password && (
-              <TextInput
+              <PasswordInput
                 style={styles.editInput}
                 value={deletePassword}
                 onChangeText={setDeletePassword}
                 placeholder="Enter your password"
-                placeholderTextColor={TOK.textDim}
-                secureTextEntry
                 autoFocus
               />
             )}
@@ -539,6 +600,11 @@ const styles = StyleSheet.create({
   aboutRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 },
   aboutKey: { fontSize: 13, fontWeight: '500', color: TOK.textMuted, width: 70 },
   aboutVal: { fontSize: 13, color: TOK.text, flex: 1, textAlign: 'right' },
+  feedbackRow: {
+    alignItems: 'center', minHeight: 48,
+    borderTopWidth: 0.5, borderTopColor: TOK.borderSoft, marginTop: 8, paddingTop: 12,
+  },
+  feedbackArrow: { fontSize: 18, color: TOK.textDim },
   dangerLabel: { marginTop: 20, color: TOK.danger },
   dangerCard: { borderColor: TOK.danger, borderWidth: 1 },
   deleteAccountText: { fontSize: 14, fontWeight: '600', color: TOK.danger },

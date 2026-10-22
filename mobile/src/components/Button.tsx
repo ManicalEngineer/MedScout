@@ -24,6 +24,8 @@ interface ButtonProps {
   textStyle?: TextStyle;
   full?: boolean;
   testID?: string;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
 export function Button({
@@ -37,6 +39,8 @@ export function Button({
   textStyle,
   full = true,
   testID,
+  accessibilityLabel,
+  accessibilityHint,
 }: ButtonProps) {
   const vs = variantStyles[variant];
   const ss = sizeStyles[size];
@@ -55,6 +59,10 @@ export function Button({
         style,
       ]}
       activeOpacity={0.75}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? (typeof children === 'string' ? children : undefined)}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
     >
       <View style={styles.inner}>
         {loading
@@ -114,8 +122,10 @@ const variantStyles: Record<Variant, { btn: ViewStyle; text: TextStyle; textColo
   },
 };
 
+// minHeight: 48 on every size -- Android's 48dp minimum touch target
+// (RN's layout units are already dp-equivalent, so 48 here is 48dp).
 const sizeStyles: Record<Size, { btn: ViewStyle; text: TextStyle }> = {
-  lg: { btn: { paddingVertical: 16, paddingHorizontal: 20 }, text: { fontSize: 16 } },
-  md: { btn: { paddingVertical: 12, paddingHorizontal: 16 }, text: { fontSize: 15 } },
-  sm: { btn: { paddingVertical: 8,  paddingHorizontal: 12 }, text: { fontSize: 13 } },
+  lg: { btn: { paddingVertical: 16, paddingHorizontal: 20, minHeight: 48 }, text: { fontSize: 16 } },
+  md: { btn: { paddingVertical: 12, paddingHorizontal: 16, minHeight: 48 }, text: { fontSize: 15 } },
+  sm: { btn: { paddingVertical: 8,  paddingHorizontal: 12, minHeight: 48 }, text: { fontSize: 13 } },
 };

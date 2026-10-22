@@ -6,6 +6,8 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOK } from '../theme/tokens';
 import { useAuth } from '../context/AuthContext';
+import { navigationIntegration } from '../services/sentryNavigation';
+import { useAppOpenedNoAction } from '../hooks/useAppOpenedNoAction';
 
 import { DashboardScreen } from '../screens/Dashboard/DashboardScreen';
 import { HuntScreen } from '../screens/Hunt/HuntScreen';
@@ -14,6 +16,7 @@ import { PostCallScreen } from '../screens/Hunt/PostCallScreen';
 import { MapScreen } from '../screens/Map/MapScreen';
 import { ProfileScreen } from '../screens/Profile/ProfileScreen';
 import { OnboardingScreen } from '../screens/Onboarding/OnboardingScreen';
+import { WalkthroughScreen } from '../screens/Walkthrough/WalkthroughScreen';
 import { LoginScreen } from '../screens/Auth/LoginScreen';
 import { AddPharmacyScreen } from '../screens/Hunt/AddPharmacyScreen';
 import { PharmacyDetailScreen } from '../screens/Hunt/PharmacyDetailScreen';
@@ -22,6 +25,7 @@ export type RootStackParamList = {
   Main: undefined;
   Login: undefined;
   Onboarding: undefined;
+  Walkthrough: undefined;
 };
 
 export type HuntStackParamList = {
@@ -129,11 +133,17 @@ function TabNavigator() {
 }
 
 export function AppNavigator() {
-  const { user, loading, hasMedicationProfile } = useAuth();
+  const { user, loading, hasMedicationProfile, hasSeenWalkthrough } = useAuth();
+  const navigationRef = React.useRef(null);
+  const markNavAction = useAppOpenedNoAction(!!user);
   if (loading) return null;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => navigationIntegration.registerNavigationContainer(navigationRef)}
+      onStateChange={markNavAction}
+    >
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <RootStack.Screen name="Login" component={LoginScreen} />
@@ -146,6 +156,12 @@ export function AppNavigator() {
           // "already onboarded" to fall back on — an accepted tradeoff of
           // keeping medication profiles off the server.
           <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
+        ) : !hasSeenWalkthrough ? (
+          // Shown once, after onboarding, before Main -- see AuthContext's
+          // hasSeenWalkthrough doc comment for why this is a separate flag
+          // from hasMedicationProfile (so existing installs picking up this
+          // update see it too, exactly once).
+          <RootStack.Screen name="Walkthrough" component={WalkthroughScreen} />
         ) : (
           <RootStack.Screen name="Main" component={TabNavigator} />
         )}

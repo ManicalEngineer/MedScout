@@ -119,11 +119,21 @@ export function MedicationPickerFields({
 
       <Text style={[styles.subLabel, { marginTop: 16 }]}>SUPPLY</Text>
       <View style={styles.supplyRow}>
-        <TouchableOpacity style={styles.supplyBtn} onPress={() => onSupplyChange(Math.max(1, supply - 1))}>
+        <TouchableOpacity
+          style={styles.supplyBtn}
+          onPress={() => onSupplyChange(Math.max(1, supply - 1))}
+          accessibilityRole="button"
+          accessibilityLabel="Decrease supply"
+        >
           <Text style={styles.supplyBtnText}>−</Text>
         </TouchableOpacity>
         <Text style={styles.supplyValue}>{supply} <Text style={styles.supplyUnit}>days/refill</Text></Text>
-        <TouchableOpacity style={styles.supplyBtn} onPress={() => onSupplyChange(supply + 1)}>
+        <TouchableOpacity
+          style={styles.supplyBtn}
+          onPress={() => onSupplyChange(supply + 1)}
+          accessibilityRole="button"
+          accessibilityLabel="Increase supply"
+        >
           <Text style={styles.supplyBtnText}>+</Text>
         </TouchableOpacity>
       </View>
@@ -154,7 +164,7 @@ const styles = StyleSheet.create({
     backgroundColor: TOK.surface, borderWidth: 1, borderColor: TOK.border, borderRadius: 10, padding: 14,
   },
   supplyBtn: {
-    width: 32, height: 32, borderRadius: 8,
+    width: 48, height: 48, borderRadius: 8,
     backgroundColor: TOK.surface2, borderWidth: 1, borderColor: TOK.border,
     alignItems: 'center', justifyContent: 'center',
   },

@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { api, setToken, clearToken, BASE_URL } from './client';
 
 export interface User {
@@ -31,7 +32,7 @@ export async function login(email: string, password: string): Promise<void> {
 export async function oauthLogin(provider: 'google' | 'apple', idToken: string): Promise<void> {
   const data = await api.post<TokenResponse>(
     '/auth/oauth',
-    { provider, id_token: idToken },
+    { provider, id_token: idToken, platform: Platform.OS },
     false,
   );
   await setToken(data.access_token);
@@ -40,7 +41,7 @@ export async function oauthLogin(provider: 'google' | 'apple', idToken: string):
 export async function register(email: string, password: string): Promise<void> {
   const data = await api.post<TokenResponse>(
     '/auth/register',
-    { email, password },
+    { email, password, platform: Platform.OS },
     false,
   );
   await setToken(data.access_token);

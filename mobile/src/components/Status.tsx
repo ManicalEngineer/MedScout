@@ -12,7 +12,7 @@ const KIND_LABELS: Record<string, string> = {
   ok: 'In stock',
   out: 'Out of stock',
   soon: 'Back soon',
-  muted: '—',
+  muted: '-',
 };
 
 export function Status({ kind, label, style }: StatusProps) {

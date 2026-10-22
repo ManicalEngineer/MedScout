@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
+  Alert, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, InteractionManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -16,6 +16,8 @@ import { logCall } from '../../api/calls';
 import { useWhisper } from '../../hooks/useWhisper';
 import { HuntStackParamList } from '../../navigation/AppNavigator';
 import { getActiveProfile } from '../../storage/medicationProfiles';
+import { useAuth } from '../../context/AuthContext';
+import { maybePromptForReview } from '../../services/reviewPrompt';
 
 type Nav = NativeStackNavigationProp<HuntStackParamList, 'PostCall'>;
 type Route = RouteProp<HuntStackParamList, 'PostCall'>;
@@ -103,6 +105,7 @@ export function PostCallScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { pharmacyId, audioUri, medicationName, strength } = route.params;
+  const { isFirstLaunchSession } = useAuth();
 
   const [status, setStatus] = useState('in_stock');
   const [contribute, setContribute] = useState(true);
@@ -115,10 +118,12 @@ export function PostCallScreen() {
   const whisper = useWhisper();
   const isTranscribing = whisper.status === 'transcribing' || whisper.status === 'downloading' || whisper.status === 'loading';
 
-  // Auto-transcribe on mount if we have an audio file
+  // Auto-transcribe on mount if we have an audio file. Deferred past the
+  // screen-transition/keyboard-dismiss animation from ActiveCallScreen — see
+  // the matching note in ActiveCallScreen.tsx on Sentry App Hang #7777594110.
   useEffect(() => {
     if (audioUri && TRANSCRIPTION_SUPPORTED) {
-      runTranscription(audioUri);
+      InteractionManager.runAfterInteractions(() => runTranscription(audioUri));
     }
   }, []);
 
@@ -167,6 +172,9 @@ export function PostCallScreen() {
         notes: notes.trim() || undefined,
       });
       await deleteAudio();
+      // Fire-and-forget: a good moment (pharmacy confirmed in stock), never
+      // blocks navigation on it either way.
+      if (effectiveStatus === 'in_stock') maybePromptForReview(isFirstLaunchSession);
       navigation.navigate('HuntMain');
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not save call log');
@@ -194,7 +202,7 @@ export function PostCallScreen() {
               <View style={styles.transcriptHeader}>
                 <View style={styles.flex}>
                   <Text style={styles.transcriptBadge}>🎙 Whisper tiny.en · on-device</Text>
-                  <Text style={styles.transcriptSub}>Your spoken summary — not a recording of the pharmacy call</Text>
+                  <Text style={styles.transcriptSub}>Your spoken summary, not a recording of the pharmacy call</Text>
                 </View>
                 {!isTranscribing && transcript && (
                   <TouchableOpacity onPress={() => setEditingTranscript(e => !e)}>
@@ -206,7 +214,7 @@ export function PostCallScreen() {
               {!TRANSCRIPTION_SUPPORTED ? (
                 <View style={styles.transcriptEmpty}>
                   <Text style={styles.transcriptEmptyText}>
-                    On-device transcription isn't available on Android yet — log the outcome below.
+                    On-device transcription isn't available on Android yet. Log the outcome below.
                   </Text>
                 </View>
               ) : isTranscribing ? (
@@ -228,6 +236,7 @@ export function PostCallScreen() {
                     onChangeText={setTranscript}
                     multiline
                     autoFocus
+                    editable={!isTranscribing}
                     placeholderTextColor={TOK.textDim}
                   />
                 ) : (
@@ -323,6 +332,7 @@ export function PostCallScreen() {
             placeholder="e.g. they'll hold 10 tablets, ask for the pharmacist"
             placeholderTextColor={TOK.textDim}
             multiline
+            editable={!isTranscribing}
           />
         </Card>
 
@@ -333,7 +343,7 @@ export function PostCallScreen() {
               <Text style={styles.contributeTitle}>Share with community</Text>
               <Text style={styles.contributeSub}>Anonymous. Unlocks heatmap 30 days. Your private note is never included.</Text>
             </View>
-            <Toggle value={contribute} onValueChange={setContribute} />
+            <Toggle value={contribute} onValueChange={setContribute} accessibilityLabel="Share with community" />
           </View>
         </Card>
       </ScrollView>

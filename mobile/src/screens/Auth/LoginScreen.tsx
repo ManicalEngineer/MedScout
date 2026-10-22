@@ -5,11 +5,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
+import * as Sentry from '@sentry/react-native';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { AntDesign } from '@expo/vector-icons';
 import { TOK } from '../../theme/tokens';
 import { Button } from '../../components/Button';
+import { PasswordInput } from '../../components/PasswordInput';
 import { login, register, oauthLogin } from '../../api/auth';
 import { useAuth } from '../../context/AuthContext';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,25 +41,46 @@ function GoogleSignInButton({
   onIdToken: (idToken: string) => void;
   disabled: boolean;
 }) {
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  });
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest(
+    {
+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    },
+    // On native platforms this hook actually runs an auth-code+PKCE flow and
+    // redirects back into the app via a custom URI scheme. Left to its
+    // default, that redirect is `${applicationId}:/oauthredirect`
+    // (com.medscout.app:/oauthredirect), which nothing in AndroidManifest.xml
+    // handles — app.json only registers the "medscout" scheme — so Android
+    // has no app to hand the redirect back to and the flow just hangs after
+    // the user approves. Reusing the already-registered "medscout" scheme
+    // here fixes that without touching the manifest.
+    { native: 'medscout://oauthredirect' },
+  );
 
   useEffect(() => {
     if (googleResponse?.type === 'success' && googleResponse.params.id_token) {
       onIdToken(googleResponse.params.id_token);
     } else if (googleResponse?.type === 'error') {
-      Alert.alert('Google sign-in failed', googleResponse.error?.message || 'Something went wrong');
+      Sentry.captureException(googleResponse.error ?? new Error('Google sign-in error response'));
+      Alert.alert(
+        'Couldn’t sign in with Google',
+        'Something went wrong connecting to Google. Please try again, or sign in with email instead.',
+      );
     }
+    // 'dismiss' and 'cancel' mean the user backed out themselves — no alert needed.
   }, [googleResponse]);
 
   return (
     <TouchableOpacity
       style={styles.googleBtn}
       disabled={!googleRequest || disabled}
-      onPress={() => promptGoogleAsync().catch((e: any) =>
-        Alert.alert('Sign-in failed', e?.message || 'Something went wrong'))}
+      onPress={() => promptGoogleAsync().catch((e: any) => {
+        Sentry.captureException(e);
+        Alert.alert(
+          'Couldn’t sign in with Google',
+          'Something went wrong connecting to Google. Please try again, or sign in with email instead.',
+        );
+      })}
     >
       <AntDesign name="google" size={18} color={TOK.text} style={styles.googleIcon} />
       <Text style={styles.googleBtnText}>Continue with Google</Text>
@@ -201,18 +224,12 @@ export function LoginScreen({ navigation }: Props) {
             autoCorrect={false}
           />
           <Text style={[styles.label, { marginTop: 12 }]}>PASSWORD</Text>
-          <TextInput
+          <PasswordInput
             testID="login-password-input"
             style={styles.input}
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
-            placeholderTextColor={TOK.textDim}
-            // Maestro/XCUITest cannot type into secureTextEntry fields on iOS —
-            // a known tooling limitation, not a security concern to work around
-            // in real builds. EXPO_PUBLIC_E2E_TEST is only ever set for local
-            // Maestro runs (see mobile/.maestro/), never in dev or prod builds.
-            secureTextEntry={process.env.EXPO_PUBLIC_E2E_TEST !== 'true'}
           />
         </View>
 

@@ -15,6 +15,7 @@ from database import get_db
 from models import User, SubscriptionTier
 from rate_limit import limiter
 from timeutil import utcnow
+from loops import send_user_onboarded_event
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,14 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     caregiver_mode: bool = False
+    platform: Optional[str] = None  # "ios" or "android", for the user_onboarded Loops event
 
 
 class OAuthRequest(BaseModel):
     provider: str          # "apple" or "google"
     id_token: str
     caregiver_mode: bool = False
+    platform: Optional[str] = None  # "ios" or "android", for the user_onboarded Loops event
 
 
 class TokenResponse(BaseModel):
@@ -216,6 +219,7 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
     db.add(user)
     db.commit()
     db.refresh(user)
+    send_user_onboarded_event(user.email, body.platform)
     return _token_response(user)
 
 
@@ -271,6 +275,7 @@ def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_
     email_verified = claims.get("email_verified") in (True, "true")
 
     user = db.query(User).filter(getattr(User, sub_field) == sub).first()
+    is_new_account = False
 
     if not user and email and email_verified:
         # Link this provider to an existing password/other-provider account
@@ -290,7 +295,10 @@ def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_
             **{sub_field: sub},
         )
         db.add(user)
+        is_new_account = True
 
     db.commit()
     db.refresh(user)
+    if is_new_account:
+        send_user_onboarded_event(user.email, body.platform)
     return _token_response(user)
