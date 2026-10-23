@@ -18,12 +18,7 @@ export function getShortageStatus(medicationName: string) {
 
 export type FlagReason = 'wrong_or_outdated' | 'spam' | 'abusive';
 
-/** Flag a community report. At 3 flags from different users it's hidden for everyone. */
+/** Flag a community report. It's hidden for the caller right away, and for everyone at 3 flags from different users. */
 export function flagReport(reportId: number, reason: FlagReason) {
   return api.post<{ flagged: boolean; hidden: boolean }>(`/availability/reports/${reportId}/flag`, { reason });
-}
-
-/** Stop showing the caller any report from whoever submitted this one. */
-export function hideContributorOf(reportId: number) {
-  return api.post<void>(`/availability/reports/${reportId}/hide-contributor`);
 }

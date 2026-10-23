@@ -85,13 +85,6 @@ def main() -> None:
         db.add(user)
         db.flush()
 
-        # A second fictional account that "submitted" the community reports, so
-        # report/hide-contributor can be exercised.
-        neighbor = User(email="demo.neighbor@example.com", hashed_password=hash_password(PASSWORD),
-                        subscription_tier=SubscriptionTier.contributor)
-        db.add(neighbor)
-        db.flush()
-
         pharmacies = []
         for i, (name, addr, zc, lat, lng, phone) in enumerate(PHARMACIES):
             p = Pharmacy(user_id=user.id, name=name, address=addr, zip_code=zc,
@@ -124,7 +117,7 @@ def main() -> None:
             db.add(AvailabilityReport(
                 pharmacy_name=name, pharmacy_address=addr, zip_code=zc, latitude=lat, longitude=lng,
                 medication_name=MED, strength=STRENGTH, status=status, source=ReportSource.community,
-                reported_at=now - timedelta(hours=hours), contributor_id=neighbor.id,
+                reported_at=now - timedelta(hours=hours),
                 expected_restock_date=(now + timedelta(days=7)).date() if status == CB else None,
             ))
         db.commit()

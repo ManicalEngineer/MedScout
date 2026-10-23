@@ -96,7 +96,6 @@ class CallLog(Base):
     # Private — never copied into AvailabilityReport by _maybe_contribute()
     notes = Column(String, nullable=True)
     manufacturer = Column(String, nullable=True)
-    contributed_report_id = Column(Integer, ForeignKey("availability_reports.id"), nullable=True)
     # Set once a check-back reminder push has fired for this call's
     # expected_restock_date, so the daily job doesn't re-notify every run.
     checkback_reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
@@ -142,10 +141,8 @@ class AvailabilityReport(Base):
     expected_restock_date = Column(Date, nullable=True)
     source = Column(Enum(ReportSource), default=ReportSource.community)
     reported_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    # Server-side only, never returned by any endpoint. Exists so a user can hide
-    # one contributor's reports (App Store 1.2 blocking). Nulled when the
-    # contributor deletes their account. NULL for reports predating this column.
-    contributor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Deliberately no user column: a report is not linked to the account that
+    # submitted it, and CallLog does not point at the report it spawned either.
     # Set when a report collects REPORT_HIDE_THRESHOLD flags; hidden until reviewed.
     hidden_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
@@ -159,17 +156,6 @@ class ReportFlag(Base):
     report_id = Column(Integer, ForeignKey("availability_reports.id", ondelete="CASCADE"), nullable=False, index=True)
     reporter_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     reason = Column(String, nullable=False)  # one of FLAG_REASONS (validated in the router)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class HiddenContributor(Base):
-    """`user_id` never wants to see reports from `contributor_id` again."""
-    __tablename__ = "hidden_contributors"
-    __table_args__ = (UniqueConstraint("user_id", "contributor_id", name="uq_hidden_contributor_once"),)
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    contributor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

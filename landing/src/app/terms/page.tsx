@@ -114,11 +114,10 @@ export default function TermsOfServicePage() {
         contributing (such as community availability data), or closing your account.
       </P>
       <P>
-        Community reports are never shown with your name or profile. We keep an internal link to
-        your account only to prevent abuse, and it is deleted when you delete your account.
-        We may use technical and behavioral signals, such as submission rates, patterns, and
-        device or account activity, to detect abuse and apply restrictions to the account or device
-        responsible.
+        Community reports are never shown with your name or profile, and we do not store a link
+        between a report and your account. We may use technical and behavioral signals, such as
+        submission rates, patterns, and device or account activity, to detect abuse and apply
+        restrictions to the account or device responsible.
       </P>
       <P>
         By contributing a report, you give MedScout a perpetual, worldwide, royalty-free,

@@ -73,8 +73,9 @@ export default function DeleteAccountPage() {
         there&rsquo;s nothing server-side to delete. Uninstalling the app removes this data.
       </P>
       <P>
-        Community reports you submitted stay on the map to help others, but their link to your
-        account is permanently deleted, along with any flags or hidden contributors you set.
+        Community reports you submitted stay on the map to help others. They aren&rsquo;t linked
+        to your account, so deleting it doesn&rsquo;t remove them. Any flags you set on other
+        people&rsquo;s reports are deleted with your account.
       </P>
       <P>
         We may also retain limited information as required for legal, security, or

@@ -82,11 +82,9 @@ def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User
         status=call.status,
         expected_restock_date=call.expected_restock_date,
         source=ReportSource.community,
-        contributor_id=user.id,
     )
     db.add(report)
     db.flush()
-    call.contributed_report_id = report.id
     user.last_contribution_at = utcnow()
     user.contribution_count = (user.contribution_count or 0) + 1
     # Auto-promote to contributor tier
@@ -187,11 +185,11 @@ def update_call_log(
         raise HTTPException(status_code=404, detail="Call log not found")
 
     if body.contribute_to_community is False and call.contributed_to_community:
-        # The report is already shared with the community (without any link
-        # to the contributor) by this point, so we don't support un-sharing it.
+        # The report is already shared with the community, and it isn't linked
+        # to this account, so there's no way to find and withdraw it.
         raise HTTPException(
             status_code=400,
-            detail="Community contributions can't be withdrawn once submitted. Deleting your account removes their link to you.",
+            detail="Community contributions can't be withdrawn once submitted, because they aren't linked to your account.",
         )
 
     if body.status is not None:

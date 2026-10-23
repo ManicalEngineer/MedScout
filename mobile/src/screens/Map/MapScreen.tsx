@@ -11,7 +11,7 @@ import { Card } from '../../components/Card';
 import { Badge } from '../../components/Badge';
 import { api } from '../../api/client';
 import { listPharmacies, Pharmacy } from '../../api/pharmacies';
-import { flagReport, hideContributorOf, FlagReason } from '../../api/availability';
+import { flagReport, FlagReason } from '../../api/availability';
 
 // iOS renders a real Apple Maps view (no API key required). Android's native map
 // renderer is always backed by the Google Maps SDK, which needs a provisioned
@@ -31,7 +31,6 @@ interface MapReport {
   source: string;
   reported_at: string;
   trust_level: string;
-  can_hide_contributor?: boolean;
 }
 
 interface HeatmapEntry {
@@ -137,40 +136,9 @@ export function MapScreen() {
     }
   };
 
-  const confirmHideContributor = (r: MapReport) => {
-    Alert.alert(
-      'Hide this contributor?',
-      'You won’t see any reports from whoever submitted this one. We don’t tell you or them who that is.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Hide',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await hideContributorOf(r.id);
-              await loadReports();
-            } catch (e: any) {
-              Alert.alert('Couldn’t hide contributor', e?.message ?? 'Try again in a moment.');
-            }
-          },
-        },
-      ],
-    );
-  };
-
   const openReportMenu = (r: MapReport) => {
-    Alert.alert('Report this stock report', `${r.pharmacy_name} · ${r.medication_name}`, [
-      {
-        text: 'Report this report…',
-        onPress: () => Alert.alert('Why are you reporting it?', undefined, [
-          ...FLAG_REASON_OPTIONS.map(o => ({ text: o.label, onPress: () => submitFlag(r, o.reason) })),
-          { text: 'Cancel', style: 'cancel' as const },
-        ]),
-      },
-      ...(r.can_hide_contributor
-        ? [{ text: 'Hide reports from this contributor', onPress: () => confirmHideContributor(r) }]
-        : []),
+    Alert.alert('Why are you reporting this?', `${r.pharmacy_name} · ${r.medication_name}`, [
+      ...FLAG_REASON_OPTIONS.map(o => ({ text: o.label, onPress: () => submitFlag(r, o.reason) })),
       { text: 'Cancel', style: 'cancel' as const },
     ]);
   };

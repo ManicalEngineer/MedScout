@@ -168,12 +168,11 @@ export default function PrivacyPolicyPage() {
         <li>Expected restock information</li>
       </UL>
       <P>
-        Community availability reports are never shown with your name, email, or any profile. We
-        store an internal link between a report and your account only to prevent abuse, such as
-        letting users hide reports from a contributor or removing bad-faith reports. That link is
-        never shared with other users or third parties, and it is deleted when you delete your
-        account. We do not sell the contributor&rsquo;s identity or provide buyers with a way to
-        look up who submitted a report.
+        Community availability reports are never shown with your name, email, or any profile, and
+        we do not store a link between a report and your account. Other users can flag a report
+        they think is wrong or abusive, and reports flagged by several people are hidden until we
+        review them. We do not sell the contributor&rsquo;s identity or provide buyers with a way
+        to look up who submitted a report.
       </P>
       <P>Commercial customers may use this information for purposes such as:</P>
       <UL>
@@ -305,9 +304,9 @@ export default function PrivacyPolicyPage() {
         <li>Previously published de-identified community data that can no longer reasonably be linked to you</li>
       </UL>
       <P>
-        If you delete your account, the internal link between your account and any community
-        reports you submitted is deleted. The reports themselves stay on the map without any
-        connection to you.
+        Community reports you submitted are not linked to your account, so they stay on the map
+        after you delete your account. Any flags you set on other people&rsquo;s reports are
+        deleted with your account.
       </P>
 
       <H2>11. Security</H2>
