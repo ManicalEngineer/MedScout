@@ -305,8 +305,9 @@ export default function PrivacyPolicyPage() {
         <li>Previously published de-identified community data that can no longer reasonably be linked to you</li>
       </UL>
       <P>
-        Community stock reports are never linked to your account in the first place, so they are
-        unaffected by account deletion and may continue to be retained and used.
+        If you delete your account, the internal link between your account and any community
+        reports you submitted is deleted. The reports themselves stay on the map without any
+        connection to you.
       </P>
 
       <H2>11. Security</H2>

@@ -187,11 +187,11 @@ def update_call_log(
         raise HTTPException(status_code=404, detail="Call log not found")
 
     if body.contribute_to_community is False and call.contributed_to_community:
-        # The report is already shared anonymously with the community by this
-        # point, so we don't support un-sharing it.
+        # The report is already shared with the community (without any link
+        # to the contributor) by this point, so we don't support un-sharing it.
         raise HTTPException(
             status_code=400,
-            detail="Community contributions are anonymous and can't be withdrawn.",
+            detail="Community contributions can't be withdrawn once submitted. Deleting your account removes their link to you.",
         )
 
     if body.status is not None:

@@ -73,9 +73,8 @@ export default function DeleteAccountPage() {
         there&rsquo;s nothing server-side to delete. Uninstalling the app removes this data.
       </P>
       <P>
-        Community stock reports you may have contributed are anonymous by design &mdash; they were
-        never linked to your account or identity, so deleting your account doesn&rsquo;t change
-        them; there is nothing in that data that identifies you to begin with.
+        Community reports you submitted stay on the map to help others, but their link to your
+        account is permanently deleted, along with any flags or hidden contributors you set.
       </P>
       <P>
         We may also retain limited information as required for legal, security, or

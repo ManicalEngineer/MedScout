@@ -114,7 +114,8 @@ export default function TermsOfServicePage() {
         contributing (such as community availability data), or closing your account.
       </P>
       <P>
-        Community reports are intentionally not linked to your account (see our Privacy Policy).
+        Community reports are never shown with your name or profile. We keep an internal link to
+        your account only to prevent abuse, and it is deleted when you delete your account.
         We may use technical and behavioral signals, such as submission rates, patterns, and
         device or account activity, to detect abuse and apply restrictions to the account or device
         responsible.
