@@ -25,7 +25,7 @@ export function HeroSection() {
             className="inline-block h-2 w-2 rounded-full bg-[#22C55E]"
             style={{ animation: 'pulse-dot 2s ease-in-out infinite' }}
           />
-          Now available on Google Play
+          Now on the App Store and Google Play
         </span>
 
         {/* Headline */}

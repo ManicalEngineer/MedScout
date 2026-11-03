@@ -35,7 +35,7 @@ function ThankYouPanel() {
           {feedbackStatus === 'submitted' ? 'Your insight helps us build the right thing.' : 'No worries — we\'ll be in touch.'}
         </p>
         <p className="text-sm text-[#8B949E]">
-          We&apos;ll reach out with beta access as soon as it&apos;s ready.
+          MedScout is available now on the App Store and Google Play. We&apos;ll send you product updates.
         </p>
       </div>
     )
@@ -50,14 +50,14 @@ function ThankYouPanel() {
         >
           ✓
         </span>
-        <p className="font-semibold text-[#22C55E]">You&apos;re on the list.</p>
+        <p className="font-semibold text-[#22C55E]">You&apos;re subscribed.</p>
       </div>
 
       <div className="h-px bg-[#30363D]" />
 
       {/* Follow-up question */}
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium text-[#F0F6FC]">One quick question while we build the beta:</p>
+        <p className="text-sm font-medium text-[#F0F6FC]">One quick question while you&apos;re here:</p>
         <p className="text-base font-semibold leading-snug text-[#F0F6FC]">
           What&apos;s the single most frustrating part of your monthly pharmacy routine?
         </p>
@@ -95,6 +95,7 @@ function ThankYouPanel() {
   )
 }
 
+const APP_STORE_URL = 'https://apps.apple.com/app/id6794949603'
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.medscout.app'
 
 export function CTASection() {
@@ -130,16 +131,6 @@ export function CTASection() {
 
   function handlePlatformClick(platform: 'ios' | 'android') {
     posthog.capture('beta_cta_clicked', { platform })
-
-    if (platform === 'ios') {
-      const testFlightUrl = process.env.NEXT_PUBLIC_TESTFLIGHT_URL
-      if (testFlightUrl) {
-        window.open(testFlightUrl, '_blank', 'noopener,noreferrer')
-      } else {
-        setErrorMsg('TestFlight is not configured yet.')
-        setStatus('error')
-      }
-    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -228,23 +219,25 @@ export function CTASection() {
             <div className="flex w-full flex-col gap-3 text-left">
               <div>
                 <p className="text-sm font-semibold text-[#F0F6FC]">Get the app</p>
-                <p className="mt-1 text-sm text-[#8B949E]">Choose your platform.</p>
+                <p className="mt-1 text-sm text-[#8B949E]">Available on iPhone and Android.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
+                <a
+                  href={APP_STORE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   onClick={() => handlePlatformClick('ios')}
                   className="group flex items-center justify-between rounded-xl border border-[#F97316]/40 bg-[#F97316]/10 px-4 py-4 text-left transition-colors hover:border-[#F97316] hover:bg-[#F97316]/20"
                 >
                   <span className="flex items-center gap-3">
                     <Apple className="h-5 w-5 text-[#F97316]" aria-hidden />
                     <span>
-                      <span className="block font-semibold text-[#F0F6FC]">Download for iOS</span>
-                      <span className="block text-xs text-[#8B949E]">TestFlight</span>
+                      <span className="block font-semibold text-[#F0F6FC]">Download on the App Store</span>
+                      <span className="block text-xs text-[#8B949E]">iPhone</span>
                     </span>
                   </span>
                   <ArrowUpRight className="h-4 w-4 text-[#8B949E] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
-                </button>
+                </a>
                 <a
                   href={PLAY_STORE_URL}
                   target="_blank"
@@ -281,7 +274,7 @@ export function CTASection() {
                 className="rounded-lg bg-[#F97316] px-6 py-3.5 font-semibold text-white transition-colors hover:bg-[#EA6C0A] disabled:opacity-60 whitespace-nowrap"
                 style={{ boxShadow: '0 0 20px rgba(249,115,22,0.2)' }}
               >
-                {status === 'loading' ? 'Joining…' : 'Get Early Access'}
+                {status === 'loading' ? 'Subscribing…' : 'Get Updates'}
               </button>
             </form>
 
@@ -290,7 +283,7 @@ export function CTASection() {
             )}
 
             <p className="text-xs text-[#8B949E]">
-              Free for early contributors. No spam. Unsubscribe anytime.
+              Product updates only. No spam. Unsubscribe anytime.
             </p>
           </>
         )}
