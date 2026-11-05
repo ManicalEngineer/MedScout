@@ -32,6 +32,7 @@ class TTLCache:
         self.hits = 0
         self.misses = 0
         self.coalesced = 0
+        self.wait_timeouts = 0
 
     def _get(self, key):
         with self._lock:
@@ -54,11 +55,11 @@ class TTLCache:
     def clear(self) -> None:
         with self._lock:
             self._data.clear()
-            self.hits = self.misses = self.coalesced = 0
+            self.hits = self.misses = self.coalesced = self.wait_timeouts = 0
 
     def stats(self) -> dict:
         with self._lock:
-            return {"name": self.name, "hits": self.hits, "misses": self.misses, "coalesced": self.coalesced, "size": len(self._data)}
+            return {"name": self.name, "hits": self.hits, "misses": self.misses, "coalesced": self.coalesced, "wait_timeouts": self.wait_timeouts, "size": len(self._data)}
 
     def _count(self, result: str) -> None:
         with self._lock:
@@ -66,15 +67,17 @@ class TTLCache:
                 self.hits += 1
             elif result == "miss":
                 self.misses += 1
-            else:
+            elif result == "coalesced":
                 self.coalesced += 1
+            else:
+                self.wait_timeouts += 1
             total = self.hits + self.misses + self.coalesced
             line = (f"cache name={self.name} result={result} hits={self.hits} "
-                    f"misses={self.misses} coalesced={self.coalesced} size={len(self._data)}")
+                    f"misses={self.misses} coalesced={self.coalesced} wait_timeouts={self.wait_timeouts} size={len(self._data)}")
         if result != "hit" or total % SUMMARY_EVERY == 0:
             logger.info(line)
 
-    def get_or_load(self, key, loader):
+    def get_or_load(self, key, loader, *, wait_timeout=None, on_timeout="load", on_wait=None):
         """Return the cached value, or call loader() -> (value, ttl) once even
         when many threads ask for the same key at the same moment.
 
@@ -83,7 +86,12 @@ class TTLCache:
         value is NOT stored: it lives only as long as the callers that were
         waiting on it hold a reference, so with ttl=0 this is pure request
         coalescing and nothing is retained afterwards. A loader exception is
-        raised to every waiter and nothing is stored."""
+        raised to every waiter and nothing is stored.
+
+        Waiters give up after wait_timeout seconds (None = wait forever): with
+        on_timeout="load" they run loader() themselves, unshared and unstored;
+        with on_timeout="raise" they get FlightTimeout. on_wait() is called just
+        before a waiter blocks, e.g. to hand back a pooled DB connection."""
         hit, value = self._get(key)
         if hit:
             self._count("hit")
@@ -94,7 +102,14 @@ class TTLCache:
             if leader:
                 flight = self._inflight[key] = _Flight()
         if not leader:
-            flight.done.wait()
+            if on_wait is not None:
+                on_wait()
+            if not flight.done.wait(wait_timeout):
+                self._count("wait_timeout")
+                if on_timeout == "raise":
+                    raise FlightTimeout(f"{self.name}: waited {wait_timeout}s for an in-flight load")
+                value, _ttl = loader()
+                return value
             self._count("coalesced")
             if flight.error is not None:
                 raise flight.error
@@ -113,6 +128,10 @@ class TTLCache:
             with self._lock:
                 self._inflight.pop(key, None)
             flight.done.set()
+
+
+class FlightTimeout(Exception):
+    """A waiter gave up on an in-flight load."""
 
 
 class _Flight:

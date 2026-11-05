@@ -16,6 +16,7 @@ from routers.auth import get_current_user
 from rate_limit import limiter
 from timeutil import utcnow, ensure_utc
 from notifications import notify_restock
+from database import release_connection
 from caches import shortage_cache, heatmap_cache, map_community_cache
 from loops import send_first_report_event, send_contributor_milestone_event, CONTRIBUTOR_MILESTONE_THRESHOLD
 
@@ -29,6 +30,10 @@ FLAG_REASONS = ("wrong_or_outdated", "spam", "abusive")
 
 # --- Schemas ---
 
+# A request waiting on another request's identical DB query gives up after this
+# long and runs the query itself (statement_timeout is 15 s). While it waits it
+# holds no pooled connection (release_connection).
+CACHE_WAIT_SECONDS = 5.0
 REPORT_MIN_INTERVAL_SECONDS = 60  # per-account gap between reports (anti-poisoning)
 
 
@@ -176,7 +181,9 @@ def get_map_reports(
             (strength or "").strip().lower(),
             zip_code or "",
         )
-        community_reports = map_community_cache.get_or_load(cache_key, load_community)
+        community_reports = map_community_cache.get_or_load(
+            cache_key, load_community, wait_timeout=CACHE_WAIT_SECONDS, on_wait=lambda: release_connection(db)
+        )
         # Reports this user flagged stay hidden for them, even before the
         # threshold hides them for everyone.
         flagged_ids = {rid for (rid,) in db.query(ReportFlag.report_id).filter(ReportFlag.reporter_id == current_user.id)}
@@ -345,7 +352,8 @@ def get_heatmap(
         ], key=lambda x: x["fill_rate"], reverse=True), None
 
     return heatmap_cache.get_or_load(
-        ((medication_name or "").strip().lower(), (strength or "").strip().lower()), load_heatmap
+        ((medication_name or "").strip().lower(), (strength or "").strip().lower()), load_heatmap,
+        wait_timeout=CACHE_WAIT_SECONDS, on_wait=lambda: release_connection(db),
     )
 
 
@@ -371,4 +379,6 @@ def get_shortage_status(
             "updated_at": ensure_utc(row.updated_at),
         }, None
 
-    return shortage_cache.get_or_load(medication_name, load)
+    return shortage_cache.get_or_load(
+        medication_name, load, wait_timeout=CACHE_WAIT_SECONDS, on_wait=lambda: release_connection(db)
+    )

@@ -7,10 +7,11 @@ from datetime import datetime, timedelta
 from math import radians, cos, sin, asin, sqrt, exp
 import logging
 import os
+import threading
 import httpx
 
 from database import get_db, release_connection
-from cache_util import TTLCache
+from cache_util import TTLCache, FlightTimeout
 from models import Pharmacy, AvailabilityReport, CallStatus
 from routers.auth import get_current_user
 from models import User
@@ -310,7 +311,9 @@ def create_pharmacy(
 # turns on caching of successful responses (never failures) and must be set
 # deliberately in the environment.
 PLACES_GRID_DEGREES = 0.005
-PLACES_TIMEOUT = 5
+PLACES_TIMEOUT = 5                 # per-phase httpx timeout (connect/read/write/pool)
+PLACES_TOTAL_DEADLINE = 6.0        # hard cap on the whole Google call, however it dribbles in
+PLACES_WAITER_TIMEOUT = 8.0        # > the deadline: a waiter outlasts a leader that behaves
 PLACES_UNAVAILABLE = "Pharmacy search is temporarily unavailable. Please try again in a minute."
 PLACES_BUSY = "Pharmacy search is busy right now. Please try again in a few seconds."
 PLACES_BUSY_RETRY_AFTER = 5
@@ -350,18 +353,51 @@ def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radi
     if not spend_guard.places_concurrency.try_acquire(spend_guard.env_int("PLACES_MAX_CONCURRENT", 8)):
         spend_guard.trip_log.trip("concurrency", f"in_flight={spend_guard.places_concurrency.in_flight}")
         return ("busy", PLACES_BUSY_RETRY_AFTER), 0
+    # From here the slot belongs to the worker thread, which releases it when the
+    # HTTP call really ends (even if we stop waiting for it), so the cap counts
+    # real in-flight calls.
     try:
         # Guard 2: process-wide hourly ceiling; a call is counted when it is about to be made.
         limit = spend_guard.env_int("PLACES_MAX_CALLS_PER_HOUR", 3000)
         ok, wait = spend_guard.places_ceiling.try_acquire(limit)
         if not ok:
             spend_guard.trip_log.trip("hourly_ceiling", f"limit={limit} retry_after={wait}")
+            spend_guard.places_concurrency.release()
             return ("busy", wait), 0
-        resp = httpx.get(
-            "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
-            params={"location": f"{center_lat},{center_lng}", "radius": radius_meters, "type": "pharmacy", "key": api_key},
-            timeout=PLACES_TIMEOUT,
-        )
+    except BaseException:
+        spend_guard.places_concurrency.release()
+        raise
+
+    box: dict = {}
+    finished = threading.Event()
+
+    def call_google():
+        try:
+            box["resp"] = httpx.get(
+                "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
+                params={"location": f"{center_lat},{center_lng}", "radius": radius_meters, "type": "pharmacy", "key": api_key},
+                timeout=PLACES_TIMEOUT,
+            )
+        except BaseException as e:  # noqa: BLE001 - reported to the waiting caller
+            box["exc"] = e
+        finally:
+            spend_guard.places_concurrency.release()
+            finished.set()
+
+    try:
+        threading.Thread(target=call_google, daemon=True, name="places-call").start()
+    except BaseException:
+        spend_guard.places_concurrency.release()
+        raise
+    # per-phase timeouts alone don't bound a response that trickles in, so the
+    # caller stops waiting after a fixed total, whatever the worker is doing.
+    if not finished.wait(PLACES_TOTAL_DEADLINE):
+        logger.warning("places nearby: no complete response within %.1fs (deadline)", PLACES_TOTAL_DEADLINE)
+        return ("err", None), 0
+    try:
+        if "exc" in box:
+            raise box["exc"]
+        resp = box["resp"]
         if resp.status_code != 200:
             logger.warning("places nearby: HTTP %s", resp.status_code)
             return ("err", None), 0
@@ -377,8 +413,6 @@ def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radi
     except (httpx.HTTPError, ValueError, KeyError) as e:
         logger.warning("places nearby: %s", type(e).__name__)
         return ("err", None), 0
-    finally:
-        spend_guard.places_concurrency.release()
 
 
 @router.get("/nearby")
@@ -405,10 +439,16 @@ def nearby_pharmacies(
     radius = max(500, min(radius_meters, 50000))  # Google's cap is 50 km
     gi, gj = round(lat / PLACES_GRID_DEGREES), round(lng / PLACES_GRID_DEGREES)
     key = (gi, gj, radius, "pharmacy")
-    kind, results = _places_cache.get_or_load(
-        key,
-        lambda: _load_places_nearby(api_key, round(gi * PLACES_GRID_DEGREES, 6), round(gj * PLACES_GRID_DEGREES, 6), radius),
-    )
+    try:
+        kind, results = _places_cache.get_or_load(
+            key,
+            lambda: _load_places_nearby(api_key, round(gi * PLACES_GRID_DEGREES, 6), round(gj * PLACES_GRID_DEGREES, 6), radius),
+            wait_timeout=PLACES_WAITER_TIMEOUT,
+            on_timeout="raise",
+        )
+    except FlightTimeout:
+        logger.warning("places nearby: waiter gave up after %.1fs", PLACES_WAITER_TIMEOUT)
+        raise HTTPException(status_code=503, detail=PLACES_UNAVAILABLE, headers={"Retry-After": str(PLACES_BUSY_RETRY_AFTER)})
     if kind == "busy":
         raise HTTPException(status_code=503, detail=PLACES_BUSY, headers={"Retry-After": str(max(1, int(results)))})
     if kind != "ok":
