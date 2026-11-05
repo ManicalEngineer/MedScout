@@ -16,6 +16,7 @@ from routers.auth import get_current_user
 from rate_limit import limiter
 from timeutil import utcnow, ensure_utc
 from notifications import notify_restock
+from caches import shortage_cache, heatmap_cache, map_community_cache
 from loops import send_first_report_event, send_contributor_milestone_event, CONTRIBUTOR_MILESTONE_THRESHOLD
 
 router = APIRouter()
@@ -151,31 +152,45 @@ def get_map_reports(
     community_locked = bool(requested_community) and not is_contributor
     report_sources = requested_community if is_contributor else set()
     if report_sources:
-        cutoff = utcnow() - timedelta(hours=48)
-        q = db.query(AvailabilityReport).filter(
-            AvailabilityReport.reported_at >= cutoff,
-            AvailabilityReport.source.in_(report_sources),
-            AvailabilityReport.hidden_at.is_(None),
+        # The query part is identical for every user, so it is cached briefly
+        # (see caches.py). Everything user-specific is applied after the lookup.
+        def load_community():
+            cutoff = utcnow() - timedelta(hours=48)
+            q = db.query(AvailabilityReport).filter(
+                AvailabilityReport.reported_at >= cutoff,
+                AvailabilityReport.source.in_(report_sources),
+                AvailabilityReport.hidden_at.is_(None),
+            )
+            if medication_name:
+                q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
+            if strength:
+                q = q.filter(AvailabilityReport.strength.icontains(strength, autoescape=True))
+            if zip_code:
+                q = q.filter(AvailabilityReport.zip_code == zip_code)
+            rows = q.order_by(desc(AvailabilityReport.reported_at)).limit(500).all()
+            return [_report_response(r) for r in rows], None
+
+        cache_key = (
+            frozenset(report_sources),
+            (medication_name or "").strip().lower(),
+            (strength or "").strip().lower(),
+            zip_code or "",
         )
+        community_reports = map_community_cache.get_or_load(cache_key, load_community)
         # Reports this user flagged stay hidden for them, even before the
         # threshold hides them for everyone.
-        flagged_by_me = db.query(ReportFlag.report_id).filter(ReportFlag.reporter_id == current_user.id)
-        q = q.filter(AvailabilityReport.id.notin_(flagged_by_me))
-        if medication_name:
-            q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
-        if strength:
-            q = q.filter(AvailabilityReport.strength.icontains(strength, autoescape=True))
-        if zip_code:
-            q = q.filter(AvailabilityReport.zip_code == zip_code)
-        community_reports = q.order_by(desc(AvailabilityReport.reported_at)).limit(500).all()
+        flagged_ids = {rid for (rid,) in db.query(ReportFlag.report_id).filter(ReportFlag.reporter_id == current_user.id)}
+        if flagged_ids:
+            community_reports = [r for r in community_reports if r["id"] not in flagged_ids]
         if my_contributed:
-            own = {(c.pharmacy.name, (c.medication_name or "").lower(), (c.strength or "").lower(), c.status)
+            own = {(c.pharmacy.name, (c.medication_name or "").lower(), (c.strength or "").lower(), c.status.value)
                    for c in my_contributed if c.pharmacy}
             community_reports = [
                 r for r in community_reports
-                if (r.pharmacy_name, (r.medication_name or "").lower(), (r.strength or "").lower(), r.status) not in own
+                if (r["pharmacy_name"], (r["medication_name"] or "").lower(), (r["strength"] or "").lower(), r["status"]) not in own
             ]
-        results += [_report_response(r) for r in community_reports]
+        # Copies, with trust_level recomputed so a cached entry never reports a stale label.
+        results += [{**r, "trust_level": _trust_level(r["reported_at"])} for r in community_reports]
 
     # Filter by radius if coordinates provided
     if lat is not None and lng is not None:
@@ -262,6 +277,8 @@ def flag_report(
         report.hidden_at = utcnow()
         auto_hidden = True
     db.commit()
+    if auto_hidden:
+        map_community_cache.clear()  # moderation must show up for everyone now, not after the TTL
     # Visible in server logs and (at WARNING) Sentry breadcrumbs; the auto-hide
     # line is also sent to Sentry as a message so it surfaces without log access.
     logger.warning("report_flagged report_id=%s reason=%s flags=%s", report_id, body.reason, count)
@@ -297,33 +314,39 @@ def get_heatmap(
             },
         )
 
-    cutoff = utcnow() - timedelta(days=30)
-    q = db.query(AvailabilityReport).filter(
-        AvailabilityReport.reported_at >= cutoff, AvailabilityReport.hidden_at.is_(None),
+    # Past the contributor gate the result is the same for everyone.
+    def load_heatmap():
+        cutoff = utcnow() - timedelta(days=30)
+        q = db.query(AvailabilityReport).filter(
+            AvailabilityReport.reported_at >= cutoff, AvailabilityReport.hidden_at.is_(None),
+        )
+        if medication_name:
+            q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
+        if strength:
+            q = q.filter(AvailabilityReport.strength.icontains(strength, autoescape=True))
+
+        from collections import defaultdict
+        zip_data = defaultdict(lambda: {"total": 0, "in_stock": 0})
+        for r in q.all():
+            if not r.zip_code:
+                continue
+            zip_data[r.zip_code]["total"] += 1
+            if r.status == CallStatus.in_stock:
+                zip_data[r.zip_code]["in_stock"] += 1
+
+        return sorted([
+            {
+                "zip_code": z,
+                "total_reports": d["total"],
+                "in_stock_count": d["in_stock"],
+                "fill_rate": round(d["in_stock"] / d["total"], 2) if d["total"] else 0,
+            }
+            for z, d in zip_data.items()
+        ], key=lambda x: x["fill_rate"], reverse=True), None
+
+    return heatmap_cache.get_or_load(
+        ((medication_name or "").strip().lower(), (strength or "").strip().lower()), load_heatmap
     )
-    if medication_name:
-        q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
-    if strength:
-        q = q.filter(AvailabilityReport.strength.icontains(strength, autoescape=True))
-
-    from collections import defaultdict
-    zip_data = defaultdict(lambda: {"total": 0, "in_stock": 0})
-    for r in q.all():
-        if not r.zip_code:
-            continue
-        zip_data[r.zip_code]["total"] += 1
-        if r.status == CallStatus.in_stock:
-            zip_data[r.zip_code]["in_stock"] += 1
-
-    return sorted([
-        {
-            "zip_code": z,
-            "total_reports": d["total"],
-            "in_stock_count": d["in_stock"],
-            "fill_rate": round(d["in_stock"] / d["total"], 2) if d["total"] else 0,
-        }
-        for z, d in zip_data.items()
-    ], key=lambda x: x["fill_rate"], reverse=True)
 
 
 @router.get("/shortage-status")
@@ -334,15 +357,18 @@ def get_shortage_status(
 ):
     """National shortage status for a medication brand, ingested daily from
     openFDA. Not pharmacy-specific — see ShortageStatus model docstring."""
-    row = db.query(ShortageStatus).filter(
-        ShortageStatus.medication_name == medication_name
-    ).first()
-    if not row:
-        return None
-    return {
-        "medication_name": row.medication_name,
-        "status": row.status,
-        "detail": row.detail,
-        "source": row.source,
-        "updated_at": ensure_utc(row.updated_at),
-    }
+    def load():
+        row = db.query(ShortageStatus).filter(
+            ShortageStatus.medication_name == medication_name
+        ).first()
+        if not row:
+            return None, None
+        return {
+            "medication_name": row.medication_name,
+            "status": row.status,
+            "detail": row.detail,
+            "source": row.source,
+            "updated_at": ensure_utc(row.updated_at),
+        }, None
+
+    return shortage_cache.get_or_load(medication_name, load)

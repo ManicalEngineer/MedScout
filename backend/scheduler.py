@@ -12,6 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
+from caches import shortage_cache
 from models import CallLog, CallStatus, RefillCountdown, ShortageStatus, TrackedMedication, User
 from notifications import EXPO_PUSH_URL, EXPO_PUSH_BATCH_SIZE
 
@@ -139,6 +140,14 @@ def run_fda_shortage_ingestion(db: Session) -> None:
         name for (name,) in db.query(TrackedMedication.medication_name).distinct().all()
         if name
     }
+    try:
+        _ingest_shortages(db, names)
+    finally:
+        # /availability/shortage-status caches rows for up to 10 minutes.
+        shortage_cache.clear()
+
+
+def _ingest_shortages(db: Session, names: set) -> None:
     for name in names:
         try:
             resp = httpx.get(
