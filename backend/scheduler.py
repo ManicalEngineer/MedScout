@@ -11,7 +11,7 @@ import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
-from database import SessionLocal
+from database import SchedulerSessionLocal
 from caches import shortage_cache
 from models import CallLog, CallStatus, RefillCountdown, ShortageStatus, TrackedMedication, User
 from notifications import EXPO_PUSH_URL, EXPO_PUSH_BATCH_SIZE
@@ -176,7 +176,7 @@ def _ingest_shortages(db: Session, names: set) -> None:
 
 
 def _run_all_jobs() -> None:
-    db = SessionLocal()
+    db = SchedulerSessionLocal()  # 120 s statement timeout, separate pool
     try:
         run_refill_reminders(db)
         run_checkback_reminders(db)
