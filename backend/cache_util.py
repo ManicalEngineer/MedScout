@@ -29,6 +29,7 @@ class TTLCache:
         self._data: OrderedDict = OrderedDict()  # key -> (expires_at, value)
         self._lock = threading.Lock()
         self._inflight: dict = {}
+        self._generation = 0  # bumped by clear(); a load only stores if it started in the current one
         self.hits = 0
         self.misses = 0
         self.coalesced = 0
@@ -52,8 +53,23 @@ class TTLCache:
             while len(self._data) > self.maxsize:
                 self._data.popitem(last=False)  # least recently used
 
-    def clear(self) -> None:
+    def _set_if_current(self, key, value, ttl, generation) -> None:
         with self._lock:
+            if generation != self._generation:
+                return  # cleared while loading: this value may predate whatever the clear was for
+            self._data[key] = (time.monotonic() + (self.ttl if ttl is None else ttl), value)
+            self._data.move_to_end(key)
+            while len(self._data) > self.maxsize:
+                self._data.popitem(last=False)
+
+    def clear(self) -> None:
+        """Drop everything, including in-flight loads: a load that started before
+        this call will not be stored when it finishes, and callers arriving after
+        it start a fresh load instead of joining the old one. (Callers already
+        waiting on an old load still receive its result; they asked before.)"""
+        with self._lock:
+            self._generation += 1
+            self._inflight.clear()
             self._data.clear()
             self.hits = self.misses = self.coalesced = self.wait_timeouts = 0
 
@@ -101,6 +117,7 @@ class TTLCache:
             leader = flight is None
             if leader:
                 flight = self._inflight[key] = _Flight()
+                generation = self._generation
         if not leader:
             if on_wait is not None:
                 on_wait()
@@ -118,7 +135,7 @@ class TTLCache:
             self._count("miss")
             value, ttl = loader()
             if ttl is None or ttl > 0:
-                self.set(key, value, ttl)
+                self._set_if_current(key, value, ttl, generation)
             flight.value = value
             return value
         except BaseException as e:
@@ -126,7 +143,8 @@ class TTLCache:
             raise
         finally:
             with self._lock:
-                self._inflight.pop(key, None)
+                if self._inflight.get(key) is flight:  # clear() may have replaced it
+                    del self._inflight[key]
             flight.done.set()
 
 
