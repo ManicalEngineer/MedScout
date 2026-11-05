@@ -16,3 +16,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def release_connection(db) -> None:
+    """End the session's open transaction so its connection returns to the pool
+    before a slow outbound call. Only call with no pending writes: it rolls back.
+    ORM objects loaded earlier are expired, so copy what you need first."""
+    db.rollback()

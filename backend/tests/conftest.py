@@ -23,6 +23,8 @@ def fresh_state():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     reset_all()
+    import routers.pharmacies as _ph
+    _ph._places_cache.clear()
     yield
 
 

@@ -5,10 +5,12 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
 from math import radians, cos, sin, asin, sqrt, exp
+import logging
 import os
 import httpx
 
-from database import get_db
+from database import get_db, release_connection
+from cache_util import TTLCache
 from models import Pharmacy, AvailabilityReport, CallStatus
 from routers.auth import get_current_user
 from models import User
@@ -17,6 +19,7 @@ from timeutil import utcnow, ensure_utc, UTC_MIN
 from loops import send_pharmacy_search_event
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 COMMUNITY_REPORT_WINDOW_DAYS = 90  # only count reports from the last 90 days
 PROXIMITY_MATCH_KM = 0.5           # max distance to consider two pharmacy records the same location
@@ -291,6 +294,49 @@ def create_pharmacy(
     return _pharmacy_response(pharmacy, empty_community)
 
 
+# Google Places results are cached by a coarse grid cell. 0.005 degrees is about
+# 555 m of latitude (~425 m of longitude at 40N). The search is made from the
+# cell CENTRE, so everyone in a cell gets the same candidate list; distances are
+# still computed from each user's real position. Tradeoff: Google returns at most
+# 20 places, so a pharmacy at the edge of that top 20 can be missing or present
+# depending on which side of the cell you stand; at the default 8 km radius the
+# shift (<~300 m) rarely changes the list.
+PLACES_GRID_DEGREES = 0.005
+PLACES_CACHE_TTL = 24 * 3600
+PLACES_FAILURE_TTL = 30            # failures are remembered this long, no longer
+PLACES_TIMEOUT = 5
+PLACES_UNAVAILABLE = "Pharmacy search is temporarily unavailable. Please try again in a minute."
+_places_cache = TTLCache("places_nearby", maxsize=2000, ttl=PLACES_CACHE_TTL)
+
+# Google types that are not pharmacies but get tagged as one (e.g. vets).
+_PLACES_EXCLUDED_TYPES = {"veterinary_care"}
+
+
+def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radius_meters: int):
+    """Returns (("ok", results) | ("err", None), ttl). Never raises."""
+    try:
+        resp = httpx.get(
+            "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
+            params={"location": f"{center_lat},{center_lng}", "radius": radius_meters, "type": "pharmacy", "key": api_key},
+            timeout=PLACES_TIMEOUT,
+        )
+        if resp.status_code != 200:
+            logger.warning("places nearby: HTTP %s", resp.status_code)
+            return ("err", None), PLACES_FAILURE_TTL
+        # Places API (legacy) always returns HTTP 200, even on failure; the real
+        # outcome is in "status". ZERO_RESULTS is a legitimate empty answer;
+        # anything else (bad/restricted key, quota, billing) is an error.
+        body = resp.json()
+        status = body.get("status")
+        if status not in ("OK", "ZERO_RESULTS"):
+            logger.warning("places nearby: status=%s message=%s", status, body.get("error_message"))
+            return ("err", None), PLACES_FAILURE_TTL
+        return ("ok", body.get("results", [])), PLACES_CACHE_TTL
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning("places nearby: %s", type(e).__name__)
+        return ("err", None), PLACES_FAILURE_TTL
+
+
 @router.get("/nearby")
 @limiter.limit("60/hour")
 def nearby_pharmacies(
@@ -298,6 +344,7 @@ def nearby_pharmacies(
     lat: float = Query(...),
     lng: float = Query(...),
     radius_meters: int = Query(8000),
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Return candidate pharmacies near the given coordinates via Google Places."""
@@ -305,36 +352,24 @@ def nearby_pharmacies(
     if not api_key:
         raise HTTPException(status_code=503, detail={"code": "no_places_key", "message": "Pharmacy discovery not configured."})
 
-    resp = httpx.get(
-        "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
-        params={"location": f"{lat},{lng}", "radius": radius_meters, "type": "pharmacy", "key": api_key},
-        timeout=10,
-    )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Places API error")
-
-    # Places API (legacy) always returns HTTP 200, even on failure — the real
-    # outcome is in this "status" field. ZERO_RESULTS is a legitimate empty
-    # answer; anything else (bad/restricted key, quota, billing) is an error
-    # that would otherwise silently look identical to "no pharmacies nearby."
-    body = resp.json()
-    status = body.get("status")
-    if status not in ("OK", "ZERO_RESULTS"):
-        raise HTTPException(
-            status_code=502,
-            detail={"code": "places_api_error", "status": status, "message": body.get("error_message")},
-        )
-
-    results = body.get("results", [])
+    # Copy what we need, then give the DB connection back before the Google call.
     already_saved = {p.name.lower() for p in current_user.pharmacies}
+    email = current_user.email
+    release_connection(db)
 
-    # Google sometimes tags non-pharmacy businesses (e.g. veterinary clinics) with
-    # the "pharmacy" type alongside their real category — exclude those.
-    EXCLUDED_TYPES = {"veterinary_care"}
+    radius = max(500, min(radius_meters, 50000))  # Google's cap is 50 km
+    gi, gj = round(lat / PLACES_GRID_DEGREES), round(lng / PLACES_GRID_DEGREES)
+    key = (gi, gj, radius, "pharmacy")
+    kind, results = _places_cache.get_or_load(
+        key,
+        lambda: _load_places_nearby(api_key, round(gi * PLACES_GRID_DEGREES, 6), round(gj * PLACES_GRID_DEGREES, 6), radius),
+    )
+    if kind != "ok":
+        raise HTTPException(status_code=503, detail=PLACES_UNAVAILABLE)
 
     candidates = []
     for r in results:
-        if EXCLUDED_TYPES & set(r.get("types", [])):
+        if _PLACES_EXCLUDED_TYPES & set(r.get("types", [])):
             continue
         loc = r.get("geometry", {}).get("location", {})
         candidates.append({
@@ -352,7 +387,7 @@ def nearby_pharmacies(
     candidates.sort(key=lambda c: c["distance_miles"] or 9999)
     # No medication/zipCode here by design — this app's search is GPS + Google
     # Places (see AddPharmacyScreen), never a typed medication/zip combo.
-    send_pharmacy_search_event(current_user.email, len(candidates))
+    send_pharmacy_search_event(email, len(candidates))
     return candidates
 
 
