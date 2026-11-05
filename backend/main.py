@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 load_dotenv()
@@ -21,7 +20,7 @@ if sentry_dsn:
         traces_sample_rate=0.1,
     )
 
-from rate_limit import limiter
+from rate_limit import limiter, rate_limit_exceeded_handler
 from routers import api_router
 from scheduler import start_scheduler, stop_scheduler
 
@@ -35,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ADHDBuddy API", version="0.1.0", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Browser origins that may call the API (the mobile app sends no Origin header
 # and is unaffected). Comma-separated env override for production.

@@ -292,7 +292,7 @@ def create_pharmacy(
 
 
 @router.get("/nearby")
-@limiter.limit("30/hour")
+@limiter.limit("60/hour")
 def nearby_pharmacies(
     request: Request,
     lat: float = Query(...),
