@@ -13,7 +13,7 @@ import os
 
 from database import get_db
 from models import User, SubscriptionTier
-from rate_limit import limiter
+from rate_limit import limiter, ip_key_func
 from timeutil import utcnow
 from loops import send_user_onboarded_event
 import apple_auth
@@ -209,7 +209,7 @@ def _token_response(user: User) -> TokenResponse:
 # --- Routes ---
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/hour")
+@limiter.limit("10/hour", key_func=ip_key_func)
 def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -231,7 +231,7 @@ _DUMMY_HASH = hash_password("dummy-timing-equalizer")
 
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=ip_key_func)
 def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form.username).first()
     if not user or not user.hashed_password:
@@ -262,7 +262,7 @@ def logout_all(
 
 
 @router.post("/oauth", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=ip_key_func)
 def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_db)):
     """
     Exchange a verified Apple or Google id_token for a MedScout session token.
