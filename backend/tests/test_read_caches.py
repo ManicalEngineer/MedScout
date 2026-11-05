@@ -128,3 +128,34 @@ def test_missing_shortage_row_is_cached_as_none(client, auth):
     url = "/api/v1/availability/shortage-status?medication_name=NeverHeardOfIt"
     assert client.get(url, headers=auth).json() is None
     assert client.get(url, headers=auth).json() is None
+
+
+# --- search terms are normalized before the query, so key and query agree -------
+
+def test_padded_or_uppercase_terms_query_and_cache_like_the_clean_form(client):
+    h = contributor(client, "a@test.com")                 # report: Adderall XR / 20mg
+    padded = client.get(MAP, headers=h, params={"medication_name": "  ADDERALL xr ", "strength": " 20MG "}).json()["reports"]
+    assert len(padded) == 1                               # raw "  adderall xr " would have matched nothing
+    with QueryCounter("availability_reports") as q:
+        clean = client.get(MAP, headers=h, params={"medication_name": "adderall xr", "strength": "20mg"}).json()["reports"]
+    assert q.n == 0 and clean == padded                   # same cache entry
+
+
+def test_a_padded_first_caller_cannot_poison_the_cache_for_everyone(client):
+    a, b = contributor(client, "a@test.com"), contributor(client, "b@test.com")
+    client.get(MAP, headers=a, params={"medication_name": "   adderall xr   "})
+    assert len(client.get(MAP, headers=b, params={"medication_name": "adderall xr"}).json()["reports"]) == 2
+
+
+def test_whitespace_only_term_means_no_filter(client):
+    h = contributor(client, "a@test.com")
+    assert len(client.get(MAP, headers=h, params={"medication_name": "   "}).json()["reports"]) == 1
+
+
+def test_heatmap_terms_are_normalized_too(client):
+    h = contributor(client, "a@test.com")
+    padded = client.get("/api/v1/availability/heatmap", headers=h, params={"medication_name": "  ADDERALL XR "}).json()
+    assert padded and padded[0]["zip_code"] == "90210"
+    with QueryCounter("availability_reports") as q:
+        assert client.get("/api/v1/availability/heatmap", headers=h, params={"medication_name": "adderall xr"}).json() == padded
+    assert q.n == 0

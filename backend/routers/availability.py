@@ -48,6 +48,14 @@ class ReportCreate(BaseModel):
     status: CallStatus
 
 
+def _norm(value: Optional[str]) -> Optional[str]:
+    """Strip + lowercase a search term, or None if empty. Applied before the query
+    runs so the cache key and the query always agree (icontains is case-insensitive
+    anyway, so only the stripping can change results)."""
+    value = (value or "").strip().lower()
+    return value or None
+
+
 def _trust_level(reported_at: datetime) -> str:
     age = utcnow() - ensure_utc(reported_at)
     if age < timedelta(hours=2):
@@ -128,6 +136,7 @@ def get_map_reports(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    medication_name, strength = _norm(medication_name), _norm(strength)
     _promote_contributor(current_user, db)
     is_contributor = (
         current_user.subscription_tier in (SubscriptionTier.contributor, SubscriptionTier.premium)
@@ -177,8 +186,8 @@ def get_map_reports(
 
         cache_key = (
             frozenset(report_sources),
-            (medication_name or "").strip().lower(),
-            (strength or "").strip().lower(),
+            medication_name or "",
+            strength or "",
             zip_code or "",
         )
         community_reports = map_community_cache.get_or_load(
@@ -307,6 +316,7 @@ def get_heatmap(
     current_user: User = Depends(get_current_user),
 ):
     """Give-to-get: blurred for non-contributors."""
+    medication_name, strength = _norm(medication_name), _norm(strength)
     _promote_contributor(current_user, db)
 
     is_contributor = (
@@ -352,7 +362,7 @@ def get_heatmap(
         ], key=lambda x: x["fill_rate"], reverse=True), None
 
     return heatmap_cache.get_or_load(
-        ((medication_name or "").strip().lower(), (strength or "").strip().lower()), load_heatmap,
+        (medication_name or "", strength or ""), load_heatmap,
         wait_timeout=CACHE_WAIT_SECONDS, on_wait=lambda: release_connection(db),
     )
 
