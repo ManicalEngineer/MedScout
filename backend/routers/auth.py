@@ -14,7 +14,7 @@ import os
 
 from database import get_db
 from models import User, SubscriptionTier
-from rate_limit import limiter, ip_key_func, check_login_allowed, record_login_failure
+from rate_limit import limiter, ip_key_func, check_login_allowed, fail_login
 from timeutil import utcnow
 from loops import send_user_onboarded_event
 import apple_auth
@@ -239,15 +239,13 @@ _DUMMY_HASH = hash_password("dummy-timing-equalizer")
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute", key_func=ip_key_func)
 def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    check_login_allowed(request, form.username)
+    email_wide_over = check_login_allowed(request, form.username)
     user = db.query(User).filter(User.email == form.username).first()
     if not user or not user.hashed_password:
         verify_password(form.password, _DUMMY_HASH)
-        record_login_failure(request, form.username)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        fail_login(request, form.username, email_wide_over)
     if not verify_password(form.password, user.hashed_password):
-        record_login_failure(request, form.username)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        fail_login(request, form.username, email_wide_over)
     return _token_response(user)
 
 

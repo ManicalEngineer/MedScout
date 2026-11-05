@@ -104,3 +104,58 @@ def test_authenticated_limit_is_per_user_not_per_ip(client):
     c1 = [client.post("/api/v1/pharmacies/", headers=h1, json=body).status_code for _ in range(61)]
     assert c1[:60] == [201] * 60 and c1[60] == 429
     assert client.post("/api/v1/pharmacies/", headers=h2, json=body).status_code == 201
+
+
+# --- email-wide counter can never reject a correct password ------------------
+
+def _fresh_client(i):
+    from fastapi.testclient import TestClient
+    import main
+    return TestClient(main.app, client=(f"198.51.100.{i % 250 + 1}", 40000 + i))
+
+
+def test_other_clients_failures_never_lock_out_the_real_user(client):
+    import rate_limit
+    register(client, "real@test.com", "correct-horse-1")
+    # 40 failures from 40 different clients: over the 30/h email-wide limit, under 10 each.
+    for i in range(40):
+        bad_login(_fresh_client(i), "real@test.com")
+    # The real user's own client has no failures of its own and the right password: always succeeds.
+    r = _fresh_client(200).post(LOGIN, data={"username": "real@test.com", "password": "correct-horse-1"})
+    assert r.status_code == 200 and r.json()["access_token"]
+    # Repeatedly, so a success doesn't flip the state either.
+    for _ in range(3):
+        assert _fresh_client(201).post(LOGIN, data={"username": "real@test.com", "password": "correct-horse-1"}).status_code == 200
+
+
+def test_email_wide_limit_is_30_and_only_wrong_passwords_get_429(client):
+    register(client, "real@test.com", "correct-horse-1")
+    first = [bad_login(_fresh_client(i), "real@test.com").status_code for i in range(30)]
+    assert first == [401] * 30                               # failures 1..30 are ordinary 401s
+    r = bad_login(_fresh_client(100), "real@test.com")       # 31st: counter is over
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) >= 1
+    assert client.post(LOGIN, data={"username": "real@test.com", "password": "correct-horse-1"}).status_code == 200
+
+
+def test_email_wide_over_limit_is_indistinguishable_for_unknown_email(client):
+    for i in range(31):
+        bad_login(_fresh_client(i), "ghost@test.com")
+    r = bad_login(_fresh_client(100), "ghost@test.com")
+    assert r.status_code == 429 and r.json()["detail"] == rate_limit_msg()
+
+
+def rate_limit_msg():
+    import rate_limit
+    return rate_limit.LOGIN_BLOCKED_MESSAGE
+
+
+def test_per_client_counter_does_block_even_a_correct_password(client):
+    import rate_limit
+    register(client, "real@test.com", "correct-horse-1")
+    for _ in range(10):
+        rate_limit.limiter.reset()
+        bad_login(client, "real@test.com")
+    rate_limit.limiter.reset()
+    r = client.post(LOGIN, data={"username": "real@test.com", "password": "correct-horse-1"})
+    assert r.status_code == 429                              # this client only
+    assert _fresh_client(77).post(LOGIN, data={"username": "real@test.com", "password": "correct-horse-1"}).status_code == 200

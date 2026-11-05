@@ -2,6 +2,7 @@
 can both import it without a circular import."""
 import hashlib
 import ipaddress
+import logging
 import math
 import os
 import time
@@ -14,6 +15,8 @@ from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
+
+logger = logging.getLogger(__name__)
 
 _ALGORITHM = "HS256"  # must match routers/auth.py
 
@@ -80,13 +83,21 @@ limiter = Limiter(key_func=user_or_ip_key_func)
 # unknown and known emails (unknown emails are counted too), so it reveals
 # nothing about which accounts exist.
 #
-# A cap on the email alone is a lockout lever: anyone can burn a victim's
-# allowance with 10 wrong passwords an hour, forever. So the main cap is per
-# (email, client key): one source can only exhaust its own allowance. The
-# email-wide ceiling is a high backstop against distributed guessing; reaching
-# it takes 10x the effort and still ends one hour after the attacker stops.
+# Two counters, with deliberately different powers:
+#
+# * per (email, client key), 10/h: this one BLOCKS. Once a client has failed 10
+#   times for an email, that client gets 429 until the window slides, even with
+#   the right password. Other clients are unaffected, so an attacker cannot use
+#   it to lock the real user out (short of sharing their IP or /64).
+# * per email across all clients, 30/h: this one NEVER blocks a login. A correct
+#   password always succeeds, whoever has been failing. When the count is over
+#   the limit, a WRONG password gets 429 instead of 401 and a warning is logged.
+#   That does not slow down guessing (each guess is still checked); it exists so
+#   an ongoing distributed attack is visible in the logs and the real user sees
+#   a clear message. Throttling the guessing itself is the job of the per-IP
+#   limit and Cloudflare.
 LOGIN_FAILS_PER_EMAIL_PER_CLIENT = 10   # per hour
-LOGIN_FAILS_PER_EMAIL_ALL = 100         # per hour
+LOGIN_FAILS_PER_EMAIL_ALL = 30          # per hour
 
 _guard_storage = MemoryStorage()
 _guard = MovingWindowRateLimiter(_guard_storage)
@@ -100,32 +111,36 @@ def _email_digest(email: str) -> str:
     return hashlib.sha256(email.strip().lower().encode()).hexdigest()
 
 
-def _login_scopes(request, email: str):
+def _wait_seconds(item, ids) -> int:
+    reset = _guard.get_window_stats(item, *ids).reset_time
+    return max(1, int(math.ceil(reset - time.time())))
+
+
+def _too_many(wait: int) -> HTTPException:
+    return HTTPException(status_code=429, detail=LOGIN_BLOCKED_MESSAGE, headers={"Retry-After": str(wait)})
+
+
+def check_login_allowed(request, email: str) -> bool:
+    """Raise 429 if THIS client has too many recent failures for this email.
+    Returns True if the email-wide counter is over its limit (informational:
+    the caller must still verify the password, and must not block on it)."""
     digest = _email_digest(email)
-    return [
-        (_PAIR_ITEM, ("login-fail", _client_ip_key(request), digest)),
-        (_ALL_ITEM, ("login-fail-all", digest)),
-    ]
+    pair_ids = ("login-fail", _client_ip_key(request), digest)
+    if not _guard.test(_PAIR_ITEM, *pair_ids):
+        raise _too_many(_wait_seconds(_PAIR_ITEM, pair_ids))
+    return not _guard.test(_ALL_ITEM, "login-fail-all", digest)
 
 
-def check_login_allowed(request, email: str) -> None:
-    """Raise 429 if this email has too many recent failures. Does not record."""
-    wait = 0
-    for item, ids in _login_scopes(request, email):
-        if not _guard.test(item, *ids):
-            reset = _guard.get_window_stats(item, *ids).reset_time
-            wait = max(wait, int(math.ceil(reset - time.time())))
-    if wait:
-        raise HTTPException(
-            status_code=429,
-            detail=LOGIN_BLOCKED_MESSAGE,
-            headers={"Retry-After": str(max(wait, 1))},
-        )
-
-
-def record_login_failure(request, email: str) -> None:
-    for item, ids in _login_scopes(request, email):
-        _guard.hit(item, *ids)
+def fail_login(request, email: str, email_wide_over: bool):
+    """Record a failed attempt and raise the response for it: 401, or 429 when
+    the email-wide counter was already over its limit."""
+    digest = _email_digest(email)
+    _guard.hit(_PAIR_ITEM, "login-fail", _client_ip_key(request), digest)
+    _guard.hit(_ALL_ITEM, "login-fail-all", digest)
+    if email_wide_over:
+        logger.warning("login_failures_high email_digest=%s limit=%s/h", digest[:10], LOGIN_FAILS_PER_EMAIL_ALL)
+        raise _too_many(_wait_seconds(_ALL_ITEM, ("login-fail-all", digest)))
+    raise HTTPException(status_code=401, detail="Invalid email or password")
 
 
 def reset_all() -> None:
