@@ -410,7 +410,7 @@ def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radi
             logger.warning("places nearby: status=%s message=%s", status, body.get("error_message"))
             return ("err", None), 0
         return ("ok", [_slim_place(r) for r in body.get("results", [])]), _places_cache_ttl()
-    except (httpx.HTTPError, ValueError, KeyError) as e:
+    except Exception as e:  # noqa: BLE001 - this loader promises to return, never raise; ("err") becomes a 503
         logger.warning("places nearby: %s", type(e).__name__)
         return ("err", None), 0
 
@@ -420,13 +420,20 @@ def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radi
 @limiter.limit("200/hour", key_func=ip_key_func)  # second limit by network address, on top of per user
 def nearby_pharmacies(
     request: Request,
-    lat: float = Query(...),
-    lng: float = Query(...),
+    lat: float = Query(..., ge=-90, le=90, allow_inf_nan=False),
+    lng: float = Query(..., ge=-180, le=180, allow_inf_nan=False),
     radius_meters: int = Query(8000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return candidate pharmacies near the given coordinates via Google Places."""
+    """Return candidate pharmacies near the given coordinates via Google Places.
+
+    lat must be in [-90, 90] and lng in [-180, 180] and finite, otherwise 422.
+    radius_meters is not rejected when out of range: it is clamped to
+    [500, 50000] (Google's maximum is 50 km), so asking for 100 m searches 500 m
+    and asking for 200 km searches 50 km. The clamped value is what keys the
+    shared Google call.
+    """
     api_key = os.getenv("GOOGLE_PLACES_API_KEY", "")
     if not api_key:
         raise HTTPException(status_code=503, detail={"code": "no_places_key", "message": "Pharmacy discovery not configured."})
