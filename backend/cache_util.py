@@ -31,6 +31,7 @@ class TTLCache:
         self._inflight: dict = {}
         self.hits = 0
         self.misses = 0
+        self.coalesced = 0
 
     def _get(self, key):
         with self._lock:
@@ -53,46 +54,69 @@ class TTLCache:
     def clear(self) -> None:
         with self._lock:
             self._data.clear()
-            self.hits = self.misses = 0
+            self.hits = self.misses = self.coalesced = 0
 
     def stats(self) -> dict:
         with self._lock:
-            return {"name": self.name, "hits": self.hits, "misses": self.misses, "size": len(self._data)}
+            return {"name": self.name, "hits": self.hits, "misses": self.misses, "coalesced": self.coalesced, "size": len(self._data)}
 
-    def _count(self, hit: bool) -> None:
+    def _count(self, result: str) -> None:
         with self._lock:
-            if hit:
+            if result == "hit":
                 self.hits += 1
-            else:
+            elif result == "miss":
                 self.misses += 1
-            total = self.hits + self.misses
-            line = (f"cache name={self.name} result={'hit' if hit else 'miss'} "
-                    f"hits={self.hits} misses={self.misses} size={len(self._data)}")
-        if not hit or total % SUMMARY_EVERY == 0:
+            else:
+                self.coalesced += 1
+            total = self.hits + self.misses + self.coalesced
+            line = (f"cache name={self.name} result={result} hits={self.hits} "
+                    f"misses={self.misses} coalesced={self.coalesced} size={len(self._data)}")
+        if result != "hit" or total % SUMMARY_EVERY == 0:
             logger.info(line)
 
     def get_or_load(self, key, loader):
         """Return the cached value, or call loader() -> (value, ttl) once even
-        when many threads ask for the same key at the same moment."""
+        when many threads ask for the same key at the same moment.
+
+        Concurrent callers for a key being loaded wait for that one call and
+        share its result. ttl=None uses the cache default; ttl <= 0 means the
+        value is NOT stored: it lives only as long as the callers that were
+        waiting on it hold a reference, so with ttl=0 this is pure request
+        coalescing and nothing is retained afterwards. A loader exception is
+        raised to every waiter and nothing is stored."""
         hit, value = self._get(key)
         if hit:
-            self._count(True)
+            self._count("hit")
             return value
         with self._lock:
-            entry = self._inflight.setdefault(key, [threading.Lock(), 0])
-            entry[1] += 1
+            flight = self._inflight.get(key)
+            leader = flight is None
+            if leader:
+                flight = self._inflight[key] = _Flight()
+        if not leader:
+            flight.done.wait()
+            self._count("coalesced")
+            if flight.error is not None:
+                raise flight.error
+            return flight.value
         try:
-            with entry[0]:
-                hit, value = self._get(key)
-                if hit:
-                    self._count(True)  # another thread loaded it while we waited
-                    return value
-                self._count(False)
-                value, ttl = loader()
+            self._count("miss")
+            value, ttl = loader()
+            if ttl is None or ttl > 0:
                 self.set(key, value, ttl)
-                return value
+            flight.value = value
+            return value
+        except BaseException as e:
+            flight.error = e
+            raise
         finally:
             with self._lock:
-                entry[1] -= 1
-                if entry[1] == 0:
-                    self._inflight.pop(key, None)
+                self._inflight.pop(key, None)
+            flight.done.set()
+
+
+class _Flight:
+    def __init__(self):
+        self.done = threading.Event()
+        self.value = None
+        self.error = None

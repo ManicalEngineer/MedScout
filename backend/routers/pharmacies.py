@@ -296,26 +296,51 @@ def create_pharmacy(
     return _pharmacy_response(pharmacy, empty_community)
 
 
-# Google Places results are cached by a coarse grid cell. 0.005 degrees is about
-# 555 m of latitude (~425 m of longitude at 40N). The search is made from the
-# cell CENTRE, so everyone in a cell gets the same candidate list; distances are
-# still computed from each user's real position. Tradeoff: Google returns at most
-# 20 places, so a pharmacy at the edge of that top 20 can be missing or present
-# depending on which side of the cell you stand; at the default 8 km radius the
-# shift (<~300 m) rarely changes the list.
+# Google Places lookups for /nearby are coalesced by a coarse grid cell:
+# concurrent requests for the same cell share ONE Google call. 0.005 degrees is
+# about 555 m of latitude (~425 m of longitude at 40N). The search is made from
+# the cell CENTRE so everyone in a cell gets the same candidate list; distances
+# are still computed from each user's real position. Google returns at most 20
+# places, so a pharmacy at the edge of that list can appear or vanish depending
+# on which side of a cell line you stand.
+#
+# Retention is OFF by default: PLACES_CACHE_TTL_SECONDS=0 means nothing from a
+# Google response is kept once the in-flight call completes. A positive value
+# turns on caching of successful responses (never failures) and must be set
+# deliberately in the environment.
 PLACES_GRID_DEGREES = 0.005
-PLACES_CACHE_TTL = 24 * 3600
-PLACES_FAILURE_TTL = 30            # failures are remembered this long, no longer
 PLACES_TIMEOUT = 5
 PLACES_UNAVAILABLE = "Pharmacy search is temporarily unavailable. Please try again in a minute."
-_places_cache = TTLCache("places_nearby", maxsize=2000, ttl=PLACES_CACHE_TTL)
+_places_cache = TTLCache("places_nearby", maxsize=2000, ttl=0)
 
 # Google types that are not pharmacies but get tagged as one (e.g. vets).
 _PLACES_EXCLUDED_TYPES = {"veterinary_care"}
 
 
+def _places_cache_ttl() -> int:
+    try:
+        return max(0, int(os.getenv("PLACES_CACHE_TTL_SECONDS", "0")))
+    except ValueError:
+        return 0
+
+
+def _slim_place(r: dict) -> dict:
+    """Only what /nearby uses. Ratings, opening hours, photos and everything else
+    in Google's response are dropped here and never leave this function."""
+    loc = r.get("geometry", {}).get("location", {})
+    return {
+        "place_id": r["place_id"],
+        "name": r.get("name", ""),
+        "vicinity": r.get("vicinity", ""),
+        "types": r.get("types", []),
+        "lat": loc.get("lat"),
+        "lng": loc.get("lng"),
+    }
+
+
 def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radius_meters: int):
-    """Returns (("ok", results) | ("err", None), ttl). Never raises."""
+    """Returns (("ok", [slim places]) | ("err", None), ttl). Never raises.
+    Failures always get ttl 0: they are never retained."""
     try:
         resp = httpx.get(
             "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
@@ -324,7 +349,7 @@ def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radi
         )
         if resp.status_code != 200:
             logger.warning("places nearby: HTTP %s", resp.status_code)
-            return ("err", None), PLACES_FAILURE_TTL
+            return ("err", None), 0
         # Places API (legacy) always returns HTTP 200, even on failure; the real
         # outcome is in "status". ZERO_RESULTS is a legitimate empty answer;
         # anything else (bad/restricted key, quota, billing) is an error.
@@ -332,11 +357,11 @@ def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radi
         status = body.get("status")
         if status not in ("OK", "ZERO_RESULTS"):
             logger.warning("places nearby: status=%s message=%s", status, body.get("error_message"))
-            return ("err", None), PLACES_FAILURE_TTL
-        return ("ok", body.get("results", [])), PLACES_CACHE_TTL
-    except (httpx.HTTPError, ValueError) as e:
+            return ("err", None), 0
+        return ("ok", [_slim_place(r) for r in body.get("results", [])]), _places_cache_ttl()
+    except (httpx.HTTPError, ValueError, KeyError) as e:
         logger.warning("places nearby: %s", type(e).__name__)
-        return ("err", None), PLACES_FAILURE_TTL
+        return ("err", None), 0
 
 
 @router.get("/nearby")
@@ -371,19 +396,18 @@ def nearby_pharmacies(
 
     candidates = []
     for r in results:
-        if _PLACES_EXCLUDED_TYPES & set(r.get("types", [])):
+        if _PLACES_EXCLUDED_TYPES & set(r["types"]):
             continue
-        loc = r.get("geometry", {}).get("location", {})
         candidates.append({
             "place_id": r["place_id"],
-            "name": r.get("name", ""),
-            "address": r.get("vicinity", ""),
-            "latitude": loc.get("lat"),
-            "longitude": loc.get("lng"),
+            "name": r["name"],
+            "address": r["vicinity"],
+            "latitude": r["lat"],
+            "longitude": r["lng"],
             "distance_miles": round(
-                _haversine_mi(lat, lng, loc["lat"], loc["lng"]), 1
-            ) if loc.get("lat") is not None and loc.get("lng") is not None else None,
-            "already_saved": r.get("name", "").lower() in already_saved,
+                _haversine_mi(lat, lng, r["lat"], r["lng"]), 1
+            ) if r["lat"] is not None and r["lng"] is not None else None,
+            "already_saved": r["name"].lower() in already_saved,
         })
 
     candidates.sort(key=lambda c: c["distance_miles"] or 9999)
