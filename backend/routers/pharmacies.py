@@ -14,7 +14,8 @@ from cache_util import TTLCache
 from models import Pharmacy, AvailabilityReport, CallStatus
 from routers.auth import get_current_user
 from models import User
-from rate_limit import limiter
+from rate_limit import limiter, ip_key_func
+import spend_guard
 from timeutil import utcnow, ensure_utc, UTC_MIN
 from loops import send_pharmacy_search_event
 
@@ -311,6 +312,8 @@ def create_pharmacy(
 PLACES_GRID_DEGREES = 0.005
 PLACES_TIMEOUT = 5
 PLACES_UNAVAILABLE = "Pharmacy search is temporarily unavailable. Please try again in a minute."
+PLACES_BUSY = "Pharmacy search is busy right now. Please try again in a few seconds."
+PLACES_BUSY_RETRY_AFTER = 5
 _places_cache = TTLCache("places_nearby", maxsize=2000, ttl=0)
 
 # Google types that are not pharmacies but get tagged as one (e.g. vets).
@@ -339,9 +342,21 @@ def _slim_place(r: dict) -> dict:
 
 
 def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radius_meters: int):
-    """Returns (("ok", [slim places]) | ("err", None), ttl). Never raises.
-    Failures always get ttl 0: they are never retained."""
+    """Returns (("ok", [slim places]) | ("err", None) | ("busy", retry_after_s), ttl).
+    Never raises. Only the one caller that actually goes to Google runs this, so
+    the guards below count real outbound calls, not coalesced waiters.
+    Failures and refusals always get ttl 0: they are never retained."""
+    # Guard 1: cap on concurrent in-flight Google calls. Never queues.
+    if not spend_guard.places_concurrency.try_acquire(spend_guard.env_int("PLACES_MAX_CONCURRENT", 8)):
+        spend_guard.trip_log.trip("concurrency", f"in_flight={spend_guard.places_concurrency.in_flight}")
+        return ("busy", PLACES_BUSY_RETRY_AFTER), 0
     try:
+        # Guard 2: process-wide hourly ceiling; a call is counted when it is about to be made.
+        limit = spend_guard.env_int("PLACES_MAX_CALLS_PER_HOUR", 3000)
+        ok, wait = spend_guard.places_ceiling.try_acquire(limit)
+        if not ok:
+            spend_guard.trip_log.trip("hourly_ceiling", f"limit={limit} retry_after={wait}")
+            return ("busy", wait), 0
         resp = httpx.get(
             "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
             params={"location": f"{center_lat},{center_lng}", "radius": radius_meters, "type": "pharmacy", "key": api_key},
@@ -362,10 +377,13 @@ def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radi
     except (httpx.HTTPError, ValueError, KeyError) as e:
         logger.warning("places nearby: %s", type(e).__name__)
         return ("err", None), 0
+    finally:
+        spend_guard.places_concurrency.release()
 
 
 @router.get("/nearby")
 @limiter.limit("60/hour")
+@limiter.limit("200/hour", key_func=ip_key_func)  # second limit by network address, on top of per user
 def nearby_pharmacies(
     request: Request,
     lat: float = Query(...),
@@ -391,6 +409,8 @@ def nearby_pharmacies(
         key,
         lambda: _load_places_nearby(api_key, round(gi * PLACES_GRID_DEGREES, 6), round(gj * PLACES_GRID_DEGREES, 6), radius),
     )
+    if kind == "busy":
+        raise HTTPException(status_code=503, detail=PLACES_BUSY, headers={"Retry-After": str(max(1, int(results)))})
     if kind != "ok":
         raise HTTPException(status_code=503, detail=PLACES_UNAVAILABLE)
 

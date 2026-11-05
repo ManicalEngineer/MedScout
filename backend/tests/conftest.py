@@ -25,6 +25,8 @@ def fresh_state():
     reset_all()
     import routers.pharmacies as _ph
     _ph._places_cache.clear()
+    import spend_guard
+    spend_guard.reset_all()
     import caches
     caches.clear_all()
     yield
