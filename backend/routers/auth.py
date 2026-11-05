@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 import bcrypt
@@ -219,7 +220,12 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
         caregiver_mode=body.caregiver_mode,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two signups raced past the check above; the unique index decided.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered")
     db.refresh(user)
     send_user_onboarded_event(user.email, body.platform)
     return _token_response(user)
