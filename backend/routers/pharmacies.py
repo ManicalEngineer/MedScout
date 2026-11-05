@@ -279,14 +279,16 @@ def create_pharmacy(
     current_user: User = Depends(get_current_user),
 ):
     data = body.model_dump()
+    user_id = current_user.id
     if data.get("address") and (data.get("latitude") is None or data.get("longitude") is None):
+        release_connection(db)  # don't hold a DB connection across the Google call
         geocoded = _geocode_address(data["address"])
         if geocoded:
             data["latitude"] = geocoded["latitude"]
             data["longitude"] = geocoded["longitude"]
             if not data.get("zip_code"):
                 data["zip_code"] = geocoded["zip_code"]
-    pharmacy = Pharmacy(**data, user_id=current_user.id)
+    pharmacy = Pharmacy(**data, user_id=user_id)
     db.add(pharmacy)
     db.commit()
     db.refresh(pharmacy)
@@ -409,6 +411,8 @@ def add_pharmacy_from_place(
     if not api_key:
         raise HTTPException(status_code=503, detail={"code": "no_places_key"})
 
+    user_id = current_user.id
+    release_connection(db)  # don't hold a DB connection across the Google call
     resp = httpx.get(
         "https://maps.googleapis.com/maps/api/place/details/json",
         params={
@@ -443,7 +447,7 @@ def add_pharmacy_from_place(
         raise HTTPException(status_code=422, detail="No phone number found for this pharmacy.")
 
     pharmacy = Pharmacy(
-        user_id=current_user.id,
+        user_id=user_id,
         name=result.get("name", ""),
         phone=phone,
         address=result.get("formatted_address", ""),
@@ -477,6 +481,7 @@ def update_pharmacy(
     address_changed = "address" in updates and updates["address"] != pharmacy.address
     needs_coords = pharmacy.latitude is None or pharmacy.longitude is None
     if updates.get("address") and (address_changed or needs_coords) and "latitude" not in updates and "longitude" not in updates:
+        release_connection(db)  # no pending writes yet; setattr below reloads the row
         geocoded = _geocode_address(updates["address"])
         if geocoded:
             updates["latitude"] = geocoded["latitude"]

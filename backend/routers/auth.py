@@ -285,6 +285,12 @@ def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_
     # Google sends a bool; Apple sends the string "true"
     email_verified = claims.get("email_verified") in (True, "true")
 
+    # Apple's code exchange is a slow outbound call and needs no DB state, so do
+    # it before the first query rather than while holding a connection.
+    apple_refresh_token = None
+    if body.provider == "apple" and body.authorization_code:
+        apple_refresh_token = apple_auth.exchange_code_for_refresh_token(body.authorization_code)
+
     user = db.query(User).filter(getattr(User, sub_field) == sub).first()
     is_new_account = False
 
@@ -308,10 +314,8 @@ def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_
         db.add(user)
         is_new_account = True
 
-    if body.provider == "apple" and body.authorization_code:
-        refresh_token = apple_auth.exchange_code_for_refresh_token(body.authorization_code)
-        if refresh_token:
-            user.apple_refresh_token = refresh_token
+    if apple_refresh_token:
+        user.apple_refresh_token = apple_refresh_token
 
     db.commit()
     db.refresh(user)
