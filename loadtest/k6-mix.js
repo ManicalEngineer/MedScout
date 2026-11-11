@@ -66,7 +66,16 @@ const IS_LOOPBACK = /^(127\.|localhost$|\[?::1\]?$)/.test(HOSTNAME);
 const SIM_CLIENTS = (__ENV.SIM_CLIENTS !== undefined ? __ENV.SIM_CLIENTS : (IS_LOOPBACK ? '1' : '0')) === '1';
 const HOST_HEADER = __ENV.HOST_HEADER || '';
 const RUN_ID = __ENV.RUN_ID || String(Math.floor(Date.now() / 1000));
-const PASSWORD = 'LoadTest-pw-123';
+// Password for the throwaway accounts this run creates. Generated fresh in setup() (or taken
+// from LOADTEST_PASSWORD) and handed to every session through setup data, so no fixed
+// password is ever committed or shared between runs.
+function makeRunPassword() {
+  if (__ENV.LOADTEST_PASSWORD) return __ENV.LOADTEST_PASSWORD;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+  let out = 'lt-';
+  for (let i = 0; i < 24; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
 const POOL_SIZE = parseInt(__ENV.POOL_SIZE || (SCENARIO === 'slow_google' ? '150' : '60'), 10);
 const PEAK_SIGNUPS = parseInt(__ENV.PEAK_SIGNUPS_PER_SEC || '3', 10);
 const PEAK_RETURNING = parseInt(__ENV.PEAK_RETURNING_PER_SEC || '3', 10);
@@ -240,13 +249,13 @@ function record(res, opts = {}) {
   return res;
 }
 
-function register(email, ip) {
-  const res = req('POST', '/auth/register', 'register', { email, password: PASSWORD, platform: 'ios' }, null, { ip, cb: OK });
+function register(email, ip, password) {
+  const res = req('POST', '/auth/register', 'register', { email, password, platform: 'ios' }, null, { ip, cb: OK });
   registerDuration.add(res.timings.duration);
   return res;
 }
 
-function login(email, ip, password = PASSWORD, extra = {}) {
+function login(email, ip, password, extra = {}) {
   const params = { headers: headersFor(null, ip), tags: { name: 'login', ...(extra.tags || {}) }, responseCallback: extra.cb || OK };
   delete params.headers['Content-Type'];            // login is form-encoded: let k6 set it
   const res = record(http.post(`${API}/auth/login`, { username: email, password }, params), extra);
@@ -317,11 +326,12 @@ function logCall(token, pharmacyId, ip) {
 // ---- setup: pre-register the user pool ---------------------------------------------------
 
 export function setup() {
+  const password = makeRunPassword();
   const pool = [];
   const withPharmacy = SCENARIO !== 'slow_google';
   for (let i = 0; i < POOL_SIZE; i++) {
     const email = `lt-pool-${RUN_ID}-${i}@loadtest.example.com`;
-    const res = register(email, simIp(OFFSET.setup + i));
+    const res = register(email, simIp(OFFSET.setup + i), password);
     if (res.status === 429) {
       throw new Error(
         `Setup hit 429 after ${pool.length} users: register is limited per client address. ` +
@@ -336,18 +346,18 @@ export function setup() {
     }
     pool.push({ email, token, pharmacyId });
   }
-  return { pool };
+  return { pool, password };
 }
 
 // ---- mix scenarios (capacity, limiter) ----------------------------------------------------
 
 // First session for a brand-new user: signup, add pharmacies, browse, report.
-export function newUserSession() {
+export function newUserSession(data) {
   const n = exec.scenario.iterationInTest;
   const ip = simIp(OFFSET.new + n);
   const email = `lt-new-${RUN_ID}-${n}@loadtest.example.com`;
 
-  const reg = register(email, ip);
+  const reg = register(email, ip, data.password);
   if (!check(reg, { 'register 201': (r) => r.status === 201 })) return;
   const token = reg.json('access_token');
   sleep(1);
@@ -382,7 +392,7 @@ export function returningSession(data) {
   const n = exec.scenario.iterationInTest;
   const ip = simIp(OFFSET.returning + n);
   const u = data.pool[Math.floor(Math.random() * data.pool.length)];
-  const lg = login(u.email, ip);
+  const lg = login(u.email, ip, data.password);
   if (!check(lg, { 'login 200': (r) => r.status === 200 })) return;
   const token = lg.json('access_token');
 
@@ -405,7 +415,7 @@ export function abuserSession(data) {
   const n = exec.scenario.iterationInTest;
   if (n % 2 === 0) {
     const res = req('POST', '/auth/register', 'abuser_register',
-      { email: `lt-abuse-${RUN_ID}-${n}@loadtest.example.com`, password: PASSWORD, platform: 'ios' },
+      { email: `lt-abuse-${RUN_ID}-${n}@loadtest.example.com`, password: data.password, platform: 'ios' },
       null, { ip: ABUSER_IP, who: 'abuser', cb: ABUSER_OK });
     check(res, { 'abuser register 201 or 429': (r) => r.status === 201 || r.status === 429 });
   } else {
@@ -449,7 +459,7 @@ export function probeHealth() {
 export function probeLogin(data) {
   const n = exec.scenario.iterationInTest;
   const u = data.pool[n % data.pool.length];
-  const lg = login(u.email, simIp(OFFSET.probe + n));
+  const lg = login(u.email, simIp(OFFSET.probe + n), data.password);
   check(lg, { 'probe login 200': (r) => r.status === 200 });
 }
 
