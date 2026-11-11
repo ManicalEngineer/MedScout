@@ -52,6 +52,15 @@ class User(Base):
     # last_contribution_at already implies the day.
     contribution_day = Column(Date, nullable=True)
     contributions_today = Column(Integer, default=0, nullable=False, server_default="0")
+    # Monthly streak: consecutive UTC calendar months with at least one
+    # contribution. Months are stored as their first day; no history is kept.
+    current_streak_months = Column(Integer, default=0, nullable=False, server_default="0")
+    longest_streak_months = Column(Integer, default=0, nullable=False, server_default="0")
+    last_streak_month = Column(Date, nullable=True)
+    # True once this user's first contribution with a ZIP has been checked against
+    # that ZIP's founding slots, so a user can only ever try for one slot. The
+    # ZIP itself is not stored.
+    founding_checked = Column(Boolean, default=False, nullable=False, server_default="0")
     push_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -60,6 +69,7 @@ class User(Base):
     refill_countdowns = relationship("RefillCountdown", back_populates="user", cascade="all, delete-orphan")
     alert_settings = relationship("AlertSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
     alert_subscriptions = relationship("MedicationAlertSubscription", back_populates="user", cascade="all, delete-orphan")
+    badges = relationship("UserBadge", back_populates="user", cascade="all, delete-orphan")
 
 
 class Pharmacy(Base):
@@ -255,3 +265,27 @@ class ReportStatsDaily(Base):
     # plain sum. "" when the ZIP is missing or unknown.
     area_code = Column(String(8), nullable=False, server_default="", index=True)
     count = Column(Integer, nullable=False, default=0, server_default="0")
+
+
+class UserBadge(Base):
+    """A badge a user has earned. Definitions live in code (gamification.BADGES).
+    awarded_on is a date, not a timestamp, so it can't be matched to the exact
+    moment of a report."""
+    __tablename__ = "user_badges"
+    __table_args__ = (UniqueConstraint("user_id", "badge_key", name="uq_user_badge_once"),)
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    badge_key = Column(String(40), nullable=False)
+    awarded_on = Column(Date, nullable=False)
+
+    user = relationship("User", back_populates="badges")
+
+
+class FoundingSlots(Base):
+    """How many Founding Contributor badges each ZIP has handed out (cap:
+    gamification.FOUNDING_SLOTS_PER_ZIP). A counter per ZIP, nothing about who."""
+    __tablename__ = "founding_slots"
+
+    zip_code = Column(String(5), primary_key=True)
+    claimed = Column(Integer, nullable=False, default=0, server_default="0")

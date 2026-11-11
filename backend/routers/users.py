@@ -11,6 +11,7 @@ from models import (
     TrackedMedication, SubscriptionTier,
 )
 import apple_auth
+import gamification
 from rate_limit import limiter
 from routers.auth import get_current_user, verify_password
 from timeutil import utcnow, ensure_utc
@@ -323,3 +324,13 @@ def delete_me(
     db.query(ReportFlag).filter(ReportFlag.reporter_id == current_user.id).delete()
     db.delete(current_user)
     db.commit()
+
+
+@router.get("/me/progress")
+def get_my_progress(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Totals, monthly streak, every badge (earned or locked) and the next
+    volume badge, for the Profile screen."""
+    return gamification.progress(db, current_user)

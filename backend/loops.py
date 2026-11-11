@@ -17,6 +17,7 @@ FIRST_REPORT_EVENT = "first_report_submitted"
 CONTRIBUTOR_MILESTONE_EVENT = "contributor_milestone"
 USER_ONBOARDED_EVENT = "user_onboarded"
 PHARMACY_SEARCH_EVENT = "pharmacy_search_completed"
+BADGE_EARNED_EVENT = "badge_earned"
 CONTRIBUTOR_MILESTONE_THRESHOLD = int(os.getenv("CONTRIBUTOR_MILESTONE_THRESHOLD", "3"))
 
 
@@ -84,3 +85,9 @@ def send_client_event(email: str, event_name: str, event_properties: dict | None
     — see routers/analytics.py. Every other event fires from the server-side
     code path that already knows it happened."""
     _fire_and_forget(_send_event, email, event_name, event_properties)
+
+
+def send_badge_earned_event(email: str, badge_key: str) -> None:
+    """Only the badge's key crosses this boundary — never a count, place or
+    medication."""
+    _fire_and_forget(_send_event, email, BADGE_EARNED_EVENT, {"badge": badge_key})

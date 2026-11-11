@@ -11,7 +11,9 @@ from rate_limit import limiter
 from routers.auth import get_current_user
 from timeutil import utcnow, ensure_utc
 from notifications import notify_restock
-from gamification import CHANNEL_CALL, ContributionResult, record_contribution, send_contribution_events
+from gamification import (
+    CHANNEL_CALL, ContributionResult, badge_payload, record_contribution, send_contribution_events,
+)
 
 router = APIRouter()
 
@@ -89,6 +91,13 @@ def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User
     return report, record_contribution(db, user, report, CHANNEL_CALL)
 
 
+def _new_badges(result: Optional[ContributionResult]) -> list[dict]:
+    if not result:
+        return []
+    today = utcnow().date()
+    return [badge_payload(k, today) for k in result.new_badges]
+
+
 # --- Routes ---
 
 @router.get("/")
@@ -144,7 +153,7 @@ def create_call_log(
     if new_report:
         notify_restock(new_report, db, exclude_user_id=current_user.id)
         send_contribution_events(current_user, result)
-    return _call_response(call)
+    return {**_call_response(call), "new_badges": _new_badges(result)}
 
 
 @router.get("/{call_id}")
@@ -205,7 +214,7 @@ def update_call_log(
     if new_report:
         notify_restock(new_report, db, exclude_user_id=current_user.id)
         send_contribution_events(current_user, result)
-    return _call_response(call)
+    return {**_call_response(call), "new_badges": _new_badges(result)}
 
 
 @router.delete("/{call_id}", status_code=204)
