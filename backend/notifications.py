@@ -7,6 +7,7 @@ from math import radians, cos, sin, asin, sqrt
 from typing import Optional
 
 import httpx
+from database import release_connection
 from sqlalchemy.orm import Session
 
 from models import AlertSettings, AvailabilityReport, CallStatus, MedicationAlertSubscription, Pharmacy, User
@@ -90,6 +91,9 @@ def notify_restock(report: AvailabilityReport, db: Session, exclude_user_id: Opt
             return
         title = "Back in stock nearby"
         body = f"{report.medication_name} {report.strength} was just reported in stock near you."
+        # Callers have already committed. End the read transaction so the DB
+        # connection goes back to the pool while we wait on Expo.
+        release_connection(db)
         for i in range(0, len(tokens), EXPO_PUSH_BATCH_SIZE):
             batch = tokens[i:i + EXPO_PUSH_BATCH_SIZE]
             messages = [{"to": t, "title": title, "body": body, "data": {"type": "restock"}} for t in batch]

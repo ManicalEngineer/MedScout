@@ -5,18 +5,23 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
 from math import radians, cos, sin, asin, sqrt, exp
+import logging
 import os
+import threading
 import httpx
 
-from database import get_db
+from database import get_db, release_connection
+from cache_util import TTLCache, FlightTimeout
 from models import Pharmacy, AvailabilityReport, CallStatus
 from routers.auth import get_current_user
 from models import User
-from rate_limit import limiter
+from rate_limit import limiter, ip_key_func
+import spend_guard
 from timeutil import utcnow, ensure_utc, UTC_MIN
 from loops import send_pharmacy_search_event
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 COMMUNITY_REPORT_WINDOW_DAYS = 90  # only count reports from the last 90 days
 PROXIMITY_MATCH_KM = 0.5           # max distance to consider two pharmacy records the same location
@@ -276,14 +281,16 @@ def create_pharmacy(
     current_user: User = Depends(get_current_user),
 ):
     data = body.model_dump()
+    user_id = current_user.id
     if data.get("address") and (data.get("latitude") is None or data.get("longitude") is None):
+        release_connection(db)  # don't hold a DB connection across the Google call
         geocoded = _geocode_address(data["address"])
         if geocoded:
             data["latitude"] = geocoded["latitude"]
             data["longitude"] = geocoded["longitude"]
             if not data.get("zip_code"):
                 data["zip_code"] = geocoded["zip_code"]
-    pharmacy = Pharmacy(**data, user_id=current_user.id)
+    pharmacy = Pharmacy(**data, user_id=user_id)
     db.add(pharmacy)
     db.commit()
     db.refresh(pharmacy)
@@ -291,68 +298,189 @@ def create_pharmacy(
     return _pharmacy_response(pharmacy, empty_community)
 
 
+# Google Places lookups for /nearby are coalesced by a coarse grid cell:
+# concurrent requests for the same cell share ONE Google call. 0.005 degrees is
+# about 555 m of latitude (~425 m of longitude at 40N). The search is made from
+# the cell CENTRE so everyone in a cell gets the same candidate list; distances
+# are still computed from each user's real position. Google returns at most 20
+# places, so a pharmacy at the edge of that list can appear or vanish depending
+# on which side of a cell line you stand.
+#
+# Retention is OFF by default: PLACES_CACHE_TTL_SECONDS=0 means nothing from a
+# Google response is kept once the in-flight call completes. A positive value
+# turns on caching of successful responses (never failures) and must be set
+# deliberately in the environment.
+PLACES_GRID_DEGREES = 0.005
+PLACES_TIMEOUT = 5                 # per-phase httpx timeout (connect/read/write/pool)
+PLACES_TOTAL_DEADLINE = 6.0        # hard cap on the whole Google call, however it dribbles in
+PLACES_WAITER_TIMEOUT = 8.0        # > the deadline: a waiter outlasts a leader that behaves
+PLACES_UNAVAILABLE = "Pharmacy search is temporarily unavailable. Please try again in a minute."
+PLACES_BUSY = "Pharmacy search is busy right now. Please try again in a few seconds."
+PLACES_BUSY_RETRY_AFTER = 5
+_places_cache = TTLCache("places_nearby", maxsize=2000, ttl=0)
+
+# Google types that are not pharmacies but get tagged as one (e.g. vets).
+_PLACES_EXCLUDED_TYPES = {"veterinary_care"}
+
+
+def _places_cache_ttl() -> int:
+    try:
+        return max(0, int(os.getenv("PLACES_CACHE_TTL_SECONDS", "0")))
+    except ValueError:
+        return 0
+
+
+def _slim_place(r: dict) -> dict:
+    """Only what /nearby uses. Ratings, opening hours, photos and everything else
+    in Google's response are dropped here and never leave this function."""
+    loc = r.get("geometry", {}).get("location", {})
+    return {
+        "place_id": r["place_id"],
+        "name": r.get("name", ""),
+        "vicinity": r.get("vicinity", ""),
+        "types": r.get("types", []),
+        "lat": loc.get("lat"),
+        "lng": loc.get("lng"),
+    }
+
+
+def _load_places_nearby(api_key: str, center_lat: float, center_lng: float, radius_meters: int):
+    """Returns (("ok", [slim places]) | ("err", None) | ("busy", retry_after_s), ttl).
+    Never raises. Only the one caller that actually goes to Google runs this, so
+    the guards below count real outbound calls, not coalesced waiters.
+    Failures and refusals always get ttl 0: they are never retained."""
+    # Guard 1: cap on concurrent in-flight Google calls. Never queues.
+    if not spend_guard.places_concurrency.try_acquire(spend_guard.env_int("PLACES_MAX_CONCURRENT", 8)):
+        spend_guard.trip_log.trip("concurrency", f"in_flight={spend_guard.places_concurrency.in_flight}")
+        return ("busy", PLACES_BUSY_RETRY_AFTER), 0
+    # From here the slot belongs to the worker thread, which releases it when the
+    # HTTP call really ends (even if we stop waiting for it), so the cap counts
+    # real in-flight calls.
+    try:
+        # Guard 2: process-wide hourly ceiling; a call is counted when it is about to be made.
+        limit = spend_guard.env_int("PLACES_MAX_CALLS_PER_HOUR", 3000)
+        ok, wait = spend_guard.places_ceiling.try_acquire(limit)
+        if not ok:
+            spend_guard.trip_log.trip("hourly_ceiling", f"limit={limit} retry_after={wait}")
+            spend_guard.places_concurrency.release()
+            return ("busy", wait), 0
+    except BaseException:
+        spend_guard.places_concurrency.release()
+        raise
+
+    box: dict = {}
+    finished = threading.Event()
+
+    def call_google():
+        try:
+            box["resp"] = httpx.get(
+                "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
+                params={"location": f"{center_lat},{center_lng}", "radius": radius_meters, "type": "pharmacy", "key": api_key},
+                timeout=PLACES_TIMEOUT,
+            )
+        except BaseException as e:  # noqa: BLE001 - reported to the waiting caller
+            box["exc"] = e
+        finally:
+            spend_guard.places_concurrency.release()
+            finished.set()
+
+    try:
+        threading.Thread(target=call_google, daemon=True, name="places-call").start()
+    except BaseException:
+        spend_guard.places_concurrency.release()
+        raise
+    # per-phase timeouts alone don't bound a response that trickles in, so the
+    # caller stops waiting after a fixed total, whatever the worker is doing.
+    if not finished.wait(PLACES_TOTAL_DEADLINE):
+        logger.warning("places nearby: no complete response within %.1fs (deadline)", PLACES_TOTAL_DEADLINE)
+        return ("err", None), 0
+    try:
+        if "exc" in box:
+            raise box["exc"]
+        resp = box["resp"]
+        if resp.status_code != 200:
+            logger.warning("places nearby: HTTP %s", resp.status_code)
+            return ("err", None), 0
+        # Places API (legacy) always returns HTTP 200, even on failure; the real
+        # outcome is in "status". ZERO_RESULTS is a legitimate empty answer;
+        # anything else (bad/restricted key, quota, billing) is an error.
+        body = resp.json()
+        status = body.get("status")
+        if status not in ("OK", "ZERO_RESULTS"):
+            logger.warning("places nearby: status=%s message=%s", status, body.get("error_message"))
+            return ("err", None), 0
+        return ("ok", [_slim_place(r) for r in body.get("results", [])]), _places_cache_ttl()
+    except Exception as e:  # noqa: BLE001 - this loader promises to return, never raise; ("err") becomes a 503
+        logger.warning("places nearby: %s", type(e).__name__)
+        return ("err", None), 0
+
+
 @router.get("/nearby")
-@limiter.limit("30/hour")
+@limiter.limit("60/hour")
+@limiter.limit("200/hour", key_func=ip_key_func)  # second limit by network address, on top of per user
 def nearby_pharmacies(
     request: Request,
-    lat: float = Query(...),
-    lng: float = Query(...),
+    lat: float = Query(..., ge=-90, le=90, allow_inf_nan=False),
+    lng: float = Query(..., ge=-180, le=180, allow_inf_nan=False),
     radius_meters: int = Query(8000),
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return candidate pharmacies near the given coordinates via Google Places."""
+    """Return candidate pharmacies near the given coordinates via Google Places.
+
+    lat must be in [-90, 90] and lng in [-180, 180] and finite, otherwise 422.
+    radius_meters is not rejected when out of range: it is clamped to
+    [500, 50000] (Google's maximum is 50 km), so asking for 100 m searches 500 m
+    and asking for 200 km searches 50 km. The clamped value is what keys the
+    shared Google call.
+    """
     api_key = os.getenv("GOOGLE_PLACES_API_KEY", "")
     if not api_key:
         raise HTTPException(status_code=503, detail={"code": "no_places_key", "message": "Pharmacy discovery not configured."})
 
-    resp = httpx.get(
-        "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
-        params={"location": f"{lat},{lng}", "radius": radius_meters, "type": "pharmacy", "key": api_key},
-        timeout=10,
-    )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail="Places API error")
-
-    # Places API (legacy) always returns HTTP 200, even on failure — the real
-    # outcome is in this "status" field. ZERO_RESULTS is a legitimate empty
-    # answer; anything else (bad/restricted key, quota, billing) is an error
-    # that would otherwise silently look identical to "no pharmacies nearby."
-    body = resp.json()
-    status = body.get("status")
-    if status not in ("OK", "ZERO_RESULTS"):
-        raise HTTPException(
-            status_code=502,
-            detail={"code": "places_api_error", "status": status, "message": body.get("error_message")},
-        )
-
-    results = body.get("results", [])
+    # Copy what we need, then give the DB connection back before the Google call.
     already_saved = {p.name.lower() for p in current_user.pharmacies}
+    email = current_user.email
+    release_connection(db)
 
-    # Google sometimes tags non-pharmacy businesses (e.g. veterinary clinics) with
-    # the "pharmacy" type alongside their real category — exclude those.
-    EXCLUDED_TYPES = {"veterinary_care"}
+    radius = max(500, min(radius_meters, 50000))  # Google's cap is 50 km
+    gi, gj = round(lat / PLACES_GRID_DEGREES), round(lng / PLACES_GRID_DEGREES)
+    key = (gi, gj, radius, "pharmacy")
+    try:
+        kind, results = _places_cache.get_or_load(
+            key,
+            lambda: _load_places_nearby(api_key, round(gi * PLACES_GRID_DEGREES, 6), round(gj * PLACES_GRID_DEGREES, 6), radius),
+            wait_timeout=PLACES_WAITER_TIMEOUT,
+            on_timeout="raise",
+        )
+    except FlightTimeout:
+        logger.warning("places nearby: waiter gave up after %.1fs", PLACES_WAITER_TIMEOUT)
+        raise HTTPException(status_code=503, detail=PLACES_UNAVAILABLE, headers={"Retry-After": str(PLACES_BUSY_RETRY_AFTER)})
+    if kind == "busy":
+        raise HTTPException(status_code=503, detail=PLACES_BUSY, headers={"Retry-After": str(max(1, int(results)))})
+    if kind != "ok":
+        raise HTTPException(status_code=503, detail=PLACES_UNAVAILABLE)
 
     candidates = []
     for r in results:
-        if EXCLUDED_TYPES & set(r.get("types", [])):
+        if _PLACES_EXCLUDED_TYPES & set(r["types"]):
             continue
-        loc = r.get("geometry", {}).get("location", {})
         candidates.append({
             "place_id": r["place_id"],
-            "name": r.get("name", ""),
-            "address": r.get("vicinity", ""),
-            "latitude": loc.get("lat"),
-            "longitude": loc.get("lng"),
+            "name": r["name"],
+            "address": r["vicinity"],
+            "latitude": r["lat"],
+            "longitude": r["lng"],
             "distance_miles": round(
-                _haversine_mi(lat, lng, loc["lat"], loc["lng"]), 1
-            ) if loc.get("lat") is not None and loc.get("lng") is not None else None,
-            "already_saved": r.get("name", "").lower() in already_saved,
+                _haversine_mi(lat, lng, r["lat"], r["lng"]), 1
+            ) if r["lat"] is not None and r["lng"] is not None else None,
+            "already_saved": r["name"].lower() in already_saved,
         })
 
     candidates.sort(key=lambda c: c["distance_miles"] or 9999)
     # No medication/zipCode here by design — this app's search is GPS + Google
     # Places (see AddPharmacyScreen), never a typed medication/zip combo.
-    send_pharmacy_search_event(current_user.email, len(candidates))
+    send_pharmacy_search_event(email, len(candidates))
     return candidates
 
 
@@ -374,6 +502,8 @@ def add_pharmacy_from_place(
     if not api_key:
         raise HTTPException(status_code=503, detail={"code": "no_places_key"})
 
+    user_id = current_user.id
+    release_connection(db)  # don't hold a DB connection across the Google call
     resp = httpx.get(
         "https://maps.googleapis.com/maps/api/place/details/json",
         params={
@@ -408,7 +538,7 @@ def add_pharmacy_from_place(
         raise HTTPException(status_code=422, detail="No phone number found for this pharmacy.")
 
     pharmacy = Pharmacy(
-        user_id=current_user.id,
+        user_id=user_id,
         name=result.get("name", ""),
         phone=phone,
         address=result.get("formatted_address", ""),
@@ -442,6 +572,7 @@ def update_pharmacy(
     address_changed = "address" in updates and updates["address"] != pharmacy.address
     needs_coords = pharmacy.latitude is None or pharmacy.longitude is None
     if updates.get("address") and (address_changed or needs_coords) and "latitude" not in updates and "longitude" not in updates:
+        release_connection(db)  # no pending writes yet; setattr below reloads the row
         geocoded = _geocode_address(updates["address"])
         if geocoded:
             updates["latitude"] = geocoded["latitude"]

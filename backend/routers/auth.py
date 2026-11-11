@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 import bcrypt
@@ -13,7 +14,7 @@ import os
 
 from database import get_db
 from models import User, SubscriptionTier
-from rate_limit import limiter
+from rate_limit import limiter, ip_key_func, check_login_allowed, fail_login
 from timeutil import utcnow
 from loops import send_user_onboarded_event
 import apple_auth
@@ -209,7 +210,7 @@ def _token_response(user: User) -> TokenResponse:
 # --- Routes ---
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/hour")
+@limiter.limit("60/hour", key_func=ip_key_func)
 def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -219,7 +220,12 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
         caregiver_mode=body.caregiver_mode,
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two signups raced past the check above; the unique index decided.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered")
     db.refresh(user)
     send_user_onboarded_event(user.email, body.platform)
     return _token_response(user)
@@ -231,14 +237,15 @@ _DUMMY_HASH = hash_password("dummy-timing-equalizer")
 
 
 @router.post("/login", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=ip_key_func)
 def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    email_wide_over = check_login_allowed(request, form.username)
     user = db.query(User).filter(User.email == form.username).first()
     if not user or not user.hashed_password:
         verify_password(form.password, _DUMMY_HASH)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        fail_login(request, form.username, email_wide_over)
     if not verify_password(form.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        fail_login(request, form.username, email_wide_over)
     return _token_response(user)
 
 
@@ -262,7 +269,7 @@ def logout_all(
 
 
 @router.post("/oauth", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=ip_key_func)
 def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_db)):
     """
     Exchange a verified Apple or Google id_token for a MedScout session token.
@@ -275,6 +282,12 @@ def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_
     email = claims.get("email")
     # Google sends a bool; Apple sends the string "true"
     email_verified = claims.get("email_verified") in (True, "true")
+
+    # Apple's code exchange is a slow outbound call and needs no DB state, so do
+    # it before the first query rather than while holding a connection.
+    apple_refresh_token = None
+    if body.provider == "apple" and body.authorization_code:
+        apple_refresh_token = apple_auth.exchange_code_for_refresh_token(body.authorization_code)
 
     user = db.query(User).filter(getattr(User, sub_field) == sub).first()
     is_new_account = False
@@ -299,10 +312,8 @@ def oauth_login(request: Request, body: OAuthRequest, db: Session = Depends(get_
         db.add(user)
         is_new_account = True
 
-    if body.provider == "apple" and body.authorization_code:
-        refresh_token = apple_auth.exchange_code_for_refresh_token(body.authorization_code)
-        if refresh_token:
-            user.apple_refresh_token = refresh_token
+    if apple_refresh_token:
+        user.apple_refresh_token = apple_refresh_token
 
     db.commit()
     db.refresh(user)

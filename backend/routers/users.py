@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import date, timedelta, datetime
 
-from database import get_db
+from database import get_db, release_connection
 from models import (
     User, RefillCountdown, AlertSettings, MedicationAlertSubscription,
     ReportFlag,
@@ -316,7 +316,9 @@ def delete_me(
     # Apple requires revoking the Sign in with Apple token on deletion. Best
     # effort: a failure is logged and must not leave the user unable to delete.
     if current_user.apple_refresh_token:
-        apple_auth.revoke_refresh_token(current_user.apple_refresh_token)
+        apple_token = current_user.apple_refresh_token
+        release_connection(db)  # no pending writes; don't hold a connection across Apple
+        apple_auth.revoke_refresh_token(apple_token)
     # Explicit rather than relying on FK ondelete (SQLite doesn't enforce it).
     db.query(ReportFlag).filter(ReportFlag.reporter_id == current_user.id).delete()
     db.delete(current_user)

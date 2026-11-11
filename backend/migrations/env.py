@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import create_engine, pool
 
 from alembic import context
 
@@ -53,7 +53,10 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    from database import engine as connectable
+    # Own engine: migrations must not inherit the app engine's pool or its
+    # statement_timeout (long index builds, ALTERs). Nothing is imported from database.
+    url = config.get_main_option("sqlalchemy.url")
+    connectable = create_engine(url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(

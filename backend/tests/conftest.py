@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from database import Base, engine
-from rate_limit import limiter
+from rate_limit import limiter, reset_all
 import main
 
 
@@ -22,7 +22,13 @@ import main
 def fresh_state():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
-    limiter.reset()
+    reset_all()
+    import routers.pharmacies as _ph
+    _ph._places_cache.clear()
+    import spend_guard
+    spend_guard.reset_all()
+    import caches
+    caches.clear_all()
     yield
 
 
