@@ -12,7 +12,8 @@ from errors import DB_BUSY_MESSAGE
 
 
 def tiny_pool_sessionmaker():
-    eng = create_engine(database.DATABASE_URL, connect_args={"check_same_thread": False},
+    sqlite_args = {"check_same_thread": False} if database.DATABASE_URL.startswith("sqlite") else {}
+    eng = create_engine(database.DATABASE_URL, connect_args=sqlite_args,
                         pool_size=1, max_overflow=0, pool_timeout=0.2)
     return eng, sessionmaker(autocommit=False, autoflush=False, bind=eng)
 

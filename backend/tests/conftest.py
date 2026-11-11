@@ -6,7 +6,11 @@ import tempfile
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production-0000")
 os.environ["SENTRY_DSN"] = ""  # tests must never report to the real Sentry project
-os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.gettempdir()}/medscout_test.db"
+# TEST_DATABASE_URL runs the suite against a disposable Postgres instead (every
+# table is dropped and recreated per test, so never point it at real data).
+os.environ["DATABASE_URL"] = (
+    os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{tempfile.gettempdir()}/medscout_test.db"
+)
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 

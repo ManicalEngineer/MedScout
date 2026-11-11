@@ -26,6 +26,8 @@ def test_sqlite_engines_get_no_postgres_options():
     assert e.dialect.name == "sqlite"
 
 
+@pytest.mark.skipif(not database.DATABASE_URL.startswith("sqlite"),
+                    reason="checks the default SQLite test engine; suite is running on TEST_DATABASE_URL")
 def test_seed_script_engine_has_no_timeout():
     """seed_demo only ever runs on a sqlite file, via the default engine: no options."""
     assert database.engine.dialect.name == "sqlite"
