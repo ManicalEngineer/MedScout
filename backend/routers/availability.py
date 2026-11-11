@@ -18,7 +18,11 @@ from timeutil import utcnow, ensure_utc
 from notifications import notify_restock
 from database import release_connection
 from caches import shortage_cache, heatmap_cache, map_community_cache
-from loops import send_first_report_event, send_contributor_milestone_event, CONTRIBUTOR_MILESTONE_THRESHOLD
+from areas import area_for_zip
+from gamification import (
+    CHANNEL_MANUAL, record_contribution, send_contribution_events, remove_from_area_tally,
+    area_counts, present_count,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -242,26 +246,41 @@ def submit_report(
                 detail="You're reporting too quickly. Try again in a minute.",
             )
 
-    was_first = current_user.last_contribution_at is None
-
     report = AvailabilityReport(
         source=ReportSource.community,
         **body.model_dump(),
     )
     db.add(report)
-    current_user.last_contribution_at = utcnow()
-    current_user.contribution_count = (current_user.contribution_count or 0) + 1
-    # Auto-promote contributor tier
-    if current_user.subscription_tier == SubscriptionTier.free:
-        current_user.subscription_tier = SubscriptionTier.contributor
+    result = record_contribution(db, current_user, report, CHANNEL_MANUAL)
     db.commit()
     db.refresh(report)
     notify_restock(report, db, exclude_user_id=current_user.id)
-    if was_first:
-        send_first_report_event(current_user.email)
-    if current_user.contribution_count == CONTRIBUTOR_MILESTONE_THRESHOLD:
-        send_contributor_milestone_event(current_user.email, current_user.contribution_count)
+    send_contribution_events(current_user, result)
     return _report_response(report)
+
+
+@router.get("/area-stats")
+@limiter.limit("60/hour")
+def get_area_stats(
+    request: Request,
+    zip_code: str = Query(..., pattern=r"^\d{5}$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """How many community reports the named area containing zip_code has had
+    (metro area, else county): the last 30 days and all time. Open to every
+    signed-in user (it's the "your area is active" message, not give-to-get
+    data). Small totals come back as 'fewer than N' so a count can't single
+    anyone out. area is null for a ZIP we can't place."""
+    area = area_for_zip(zip_code)
+    if area is None:
+        return {"area_code": None, "area_name": None, "last_30_days": None, "all_time": None}
+    return {
+        "area_code": area.code,
+        "area_name": area.name,
+        "last_30_days": present_count(area_counts(db, area, days=30)),
+        "all_time": present_count(area_counts(db, area)),
+    }
 
 
 class FlagCreate(BaseModel):
@@ -291,6 +310,8 @@ def flag_report(
     auto_hidden = False
     if count >= REPORT_HIDE_THRESHOLD and report.hidden_at is None:
         report.hidden_at = utcnow()
+        if report.source == ReportSource.community:
+            remove_from_area_tally(db, report)
         auto_hidden = True
     db.commit()
     if auto_hidden:

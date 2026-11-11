@@ -11,7 +11,7 @@ from rate_limit import limiter
 from routers.auth import get_current_user
 from timeutil import utcnow, ensure_utc
 from notifications import notify_restock
-from loops import send_first_report_event, send_contributor_milestone_event, CONTRIBUTOR_MILESTONE_THRESHOLD
+from gamification import CHANNEL_CALL, ContributionResult, record_contribution, send_contribution_events
 
 router = APIRouter()
 
@@ -61,16 +61,17 @@ def _resolve_medication(medication_name: Optional[str], strength: Optional[str])
 
 
 def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User,
-                      medication_name: str, strength: str) -> Optional[AvailabilityReport]:
+                      medication_name: str, strength: str
+                      ) -> tuple[Optional[AvailabilityReport], Optional[ContributionResult]]:
     """If user opted in and pharmacy isn't vaulted, add a community AvailabilityReport.
-    Returns the new report (not yet committed) so the caller can notify matching
-    users for it after the transaction actually commits."""
+    Returns the new report (not yet committed) and the contribution result so the
+    caller can notify matching users and send Loops events after the commit."""
     if not call.contributed_to_community or pharmacy.is_vaulted:
-        return None
+        return None, None
     if not medication_name:
         # A report without a medication can never match a community query — skip it
         # rather than reward the contributor tier for unusable data.
-        return None
+        return None, None
     report = AvailabilityReport(
         pharmacy_name=pharmacy.name,
         pharmacy_address=pharmacy.address,
@@ -85,12 +86,7 @@ def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User
     )
     db.add(report)
     db.flush()
-    user.last_contribution_at = utcnow()
-    user.contribution_count = (user.contribution_count or 0) + 1
-    # Auto-promote to contributor tier
-    if user.subscription_tier == SubscriptionTier.free:
-        user.subscription_tier = SubscriptionTier.contributor
-    return report
+    return report, record_contribution(db, user, report, CHANNEL_CALL)
 
 
 # --- Routes ---
@@ -139,19 +135,15 @@ def create_call_log(
     db.add(call)
     db.flush()
 
-    was_first = current_user.last_contribution_at is None
-    new_report = None
+    new_report = result = None
     if body.contribute_to_community:
-        new_report = _maybe_contribute(call, pharmacy, db, current_user, med_name, med_strength)
+        new_report, result = _maybe_contribute(call, pharmacy, db, current_user, med_name, med_strength)
 
     db.commit()
     db.refresh(call)
     if new_report:
         notify_restock(new_report, db, exclude_user_id=current_user.id)
-        if was_first:
-            send_first_report_event(current_user.email)
-        if current_user.contribution_count == CONTRIBUTOR_MILESTONE_THRESHOLD:
-            send_contributor_milestone_event(current_user.email, current_user.contribution_count)
+        send_contribution_events(current_user, result)
     return _call_response(call)
 
 
@@ -201,11 +193,10 @@ def update_call_log(
     if body.manufacturer is not None:
         call.manufacturer = body.manufacturer
 
-    was_first = current_user.last_contribution_at is None
-    new_report = None
+    new_report = result = None
     if body.contribute_to_community and not call.contributed_to_community:
         call.contributed_to_community = not call.pharmacy.is_vaulted
-        new_report = _maybe_contribute(
+        new_report, result = _maybe_contribute(
             call, call.pharmacy, db, current_user, call.medication_name or "", call.strength or ""
         )
 
@@ -213,10 +204,7 @@ def update_call_log(
     db.refresh(call)
     if new_report:
         notify_restock(new_report, db, exclude_user_id=current_user.id)
-        if was_first:
-            send_first_report_event(current_user.email)
-        if current_user.contribution_count == CONTRIBUTOR_MILESTONE_THRESHOLD:
-            send_contributor_milestone_event(current_user.email, current_user.contribution_count)
+        send_contribution_events(current_user, result)
     return _call_response(call)
 
 

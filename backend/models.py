@@ -45,6 +45,13 @@ class User(Base):
     # Count only — no linkage to which reports/pharmacies, so the count itself
     # reveals nothing about report content. Drives the Loops contributor_milestone event.
     contribution_count = Column(Integer, default=0, nullable=False, server_default="0")
+    # Badge progress: like contribution_count, but at most DAILY_BADGE_CAP per UTC
+    # day count (see gamification.py), so badges can't be farmed by volume.
+    badge_credits = Column(Integer, default=0, nullable=False, server_default="0")
+    # Today's raw tally, only to apply that cap. No history is kept;
+    # last_contribution_at already implies the day.
+    contribution_day = Column(Date, nullable=True)
+    contributions_today = Column(Integer, default=0, nullable=False, server_default="0")
     push_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -225,3 +232,26 @@ class TrackedMedication(Base):
     medication_name = Column(String, nullable=False, index=True)
     strength = Column(String, nullable=False)
     last_seen_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ReportStatsDaily(Base):
+    """Anonymous running tally of community reports: one row per UTC day,
+    channel and ZIP. No user, no pharmacy, no medication — it can't say who
+    reported or what. Feeds area totals ("500 reports in the Albany area") and
+    survives any future pruning of old availability_reports rows. Totals are
+    reported per named area (metro area or county), not per ZIP.
+
+    channel: "manual" (POST /availability/report), "call" (a contributed
+    CallLog) or "backfill" (rows that existed before this table)."""
+    __tablename__ = "report_stats_daily"
+    __table_args__ = (UniqueConstraint("day", "channel", "zip_code", name="uq_report_stats_bucket"),)
+
+    id = Column(Integer, primary_key=True)
+    day = Column(Date, nullable=False, index=True)
+    channel = Column(String(16), nullable=False)
+    # "" when the report had no ZIP, so the unique constraint still applies.
+    zip_code = Column(String(5), nullable=False, server_default="")
+    # Named area the ZIP belongs to (areas.py), stored so area totals are a
+    # plain sum. "" when the ZIP is missing or unknown.
+    area_code = Column(String(8), nullable=False, server_default="", index=True)
+    count = Column(Integer, nullable=False, default=0, server_default="0")
