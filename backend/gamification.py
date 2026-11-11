@@ -54,6 +54,7 @@ CHANNEL_CALL = "call"
 FOUNDING_SLOTS_PER_ZIP = 250
 
 YEAR_ONE_ACCOUNT_DAYS = 365
+QUIET_HERO_CREDITS = 25
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,7 @@ BADGES: tuple[Badge, ...] = (
     Badge("pup", "Pup", "10 reports shared.", credits=10),
     Badge("tracker", "Tracker", "50 reports shared.", credits=50),
     Badge("bloodhound", "Bloodhound", "250 reports shared.", credits=250),
+    Badge("quiet_hero", "Quiet Hero", "25 reports shared without ever needing a nickname."),
     Badge("steady_nose_3", "Steady Nose", "Reported 3 months in a row.", streak_months=3),
     Badge("steady_nose_6", "Steady Nose II", "Reported 6 months in a row.", streak_months=6),
     Badge("steady_nose_12", "Steady Nose III", "Reported 12 months in a row.", streak_months=12),
@@ -162,6 +164,8 @@ def _eligible_badges(user: User, channel: Optional[str], today: date, founding: 
             keys.add(b.key)
         if b.streak_months and streak >= b.streak_months:
             keys.add(b.key)
+    if credits >= QUIET_HERO_CREDITS and not user.nickname:
+        keys.add("quiet_hero")  # awarded while anonymous; kept if a nickname is set later
     if user.created_at and today - _utc_day(user.created_at) >= timedelta(days=YEAR_ONE_ACCOUNT_DAYS):
         keys.add("year_one")  # checked at contribution time, so they're still reporting
     return keys
@@ -244,8 +248,19 @@ def send_contribution_events(user: User, result: ContributionResult) -> None:
         send_first_report_event(user.email)
     if result.contribution_count == CONTRIBUTOR_MILESTONE_THRESHOLD:
         send_contributor_milestone_event(user.email, result.contribution_count)
+    if not user.gamification_enabled:
+        return  # someone who hid badges shouldn't get badge emails
     for key in result.new_badges:
         send_badge_earned_event(user.email, key)
+
+
+def visible_new_badges(user: User, result: Optional[ContributionResult]) -> list[dict]:
+    """new_badges for an API response: empty when the user has hidden badges
+    (they are still awarded, and appear if the user turns badges back on)."""
+    if not result or not user.gamification_enabled:
+        return []
+    today = _utc_day(utcnow())
+    return [badge_payload(k, today) for k in result.new_badges]
 
 
 def badge_payload(key: str, awarded_on: Optional[date] = None) -> dict:
@@ -264,6 +279,8 @@ def progress(db: Session, user: User) -> dict:
     nxt = next((b for b in VOLUME_BADGES if b.key not in earned and credits < b.credits), None)
     streak = current_streak(user, today)
     return {
+        "gamification_enabled": bool(user.gamification_enabled),
+        "nickname": user.nickname,
         "contribution_count": user.contribution_count or 0,
         "badge_credits": credits,
         "streak": {

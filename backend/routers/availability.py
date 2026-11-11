@@ -21,7 +21,7 @@ from caches import shortage_cache, heatmap_cache, map_community_cache
 from areas import area_for_zip
 from gamification import (
     CHANNEL_MANUAL, record_contribution, send_contribution_events, remove_from_area_tally,
-    area_counts, present_count, badge_payload,
+    area_counts, present_count, visible_new_badges,
 )
 
 router = APIRouter()
@@ -256,7 +256,7 @@ def submit_report(
     db.refresh(report)
     notify_restock(report, db, exclude_user_id=current_user.id)
     send_contribution_events(current_user, result)
-    return {**_report_response(report), "new_badges": [badge_payload(k, utcnow().date()) for k in result.new_badges]}
+    return {**_report_response(report), "new_badges": visible_new_badges(current_user, result)}
 
 
 @router.get("/area-stats")

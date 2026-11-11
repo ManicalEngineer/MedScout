@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import date, timedelta, datetime
 
@@ -12,6 +14,7 @@ from models import (
 )
 import apple_auth
 import gamification
+import nicknames
 from rate_limit import limiter
 from routers.auth import get_current_user, verify_password
 from timeutil import utcnow, ensure_utc
@@ -27,6 +30,8 @@ class UserResponse(BaseModel):
     caregiver_mode: bool
     subscription_tier: str
     has_password: bool
+    nickname: Optional[str] = None
+    gamification_enabled: bool = True
 
     class Config:
         from_attributes = True
@@ -35,6 +40,12 @@ class UserResponse(BaseModel):
 class UserUpdate(BaseModel):
     caregiver_mode: Optional[bool] = None
     push_token: Optional[str] = None
+    gamification_enabled: Optional[bool] = None
+
+
+class NicknameUpdate(BaseModel):
+    # null clears it
+    nickname: Optional[str] = Field(None, max_length=60)
 
 
 class DeleteAccountRequest(BaseModel):
@@ -124,6 +135,8 @@ def get_me(current_user: User = Depends(get_current_user)):
         "caregiver_mode": current_user.caregiver_mode,
         "subscription_tier": _effective_tier(current_user),
         "has_password": current_user.hashed_password is not None,
+        "nickname": current_user.nickname,
+        "gamification_enabled": current_user.gamification_enabled,
     }
 
 
@@ -139,8 +152,63 @@ def update_me(
         current_user.caregiver_mode = body.caregiver_mode
     if body.push_token is not None:
         current_user.push_token = body.push_token
+    if body.gamification_enabled is not None:
+        current_user.gamification_enabled = body.gamification_enabled
     db.commit()
-    return {"id": current_user.id, "caregiver_mode": current_user.caregiver_mode}
+    return {
+        "id": current_user.id,
+        "caregiver_mode": current_user.caregiver_mode,
+        "gamification_enabled": current_user.gamification_enabled,
+    }
+
+
+def _nickname_taken(db: Session, name: str, except_user_id: int) -> bool:
+    return db.query(User.id).filter(
+        func.lower(User.nickname) == name.lower(), User.id != except_user_id
+    ).first() is not None
+
+
+@router.get("/me/nickname/suggestions")
+@limiter.limit("60/hour")
+def nickname_suggestions(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Five ready-made nicknames nobody has, for tap-to-pick."""
+    candidates = nicknames.suggestions(count=15)
+    taken = {n.lower() for (n,) in db.query(User.nickname).filter(
+        func.lower(User.nickname).in_([c.lower() for c in candidates])
+    )}
+    return {"suggestions": [c for c in candidates if c.lower() not in taken][:5]}
+
+
+@router.put("/me/nickname")
+@limiter.limit("30/hour")
+def set_nickname(
+    request: Request,
+    body: NicknameUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set or (with null) clear the nickname. Only the user ever sees it."""
+    if body.nickname is None or not body.nickname.strip():
+        current_user.nickname = None
+        db.commit()
+        return {"nickname": None}
+    try:
+        name = nicknames.validate(body.nickname)
+    except nicknames.NicknameError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if _nickname_taken(db, name, current_user.id):
+        raise HTTPException(status_code=409, detail="That nickname is taken. Try one of the suggestions.")
+    current_user.nickname = name
+    try:
+        db.commit()
+    except IntegrityError:  # lost a race for the same name
+        db.rollback()
+        raise HTTPException(status_code=409, detail="That nickname is taken. Try one of the suggestions.")
+    return {"nickname": name}
 
 
 @router.get("/me/refill-countdown")

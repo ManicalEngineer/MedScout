@@ -1,7 +1,7 @@
 import enum
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Float, Text, Enum, ForeignKey, Date,
-    UniqueConstraint,
+    Index, UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -61,6 +61,12 @@ class User(Base):
     # that ZIP's founding slots, so a user can only ever try for one slot. The
     # ZIP itself is not stored.
     founding_checked = Column(Boolean, default=False, nullable=False, server_default="0")
+    # Optional, shown only to the user themself (nicknames.py). Unique ignoring
+    # case (index below the class).
+    nickname = Column(String(20), nullable=True)
+    # False hides badges and streaks in the app; counters keep running because
+    # give-to-get depends on them.
+    gamification_enabled = Column(Boolean, default=True, nullable=False, server_default="1")
     push_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -70,6 +76,9 @@ class User(Base):
     alert_settings = relationship("AlertSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
     alert_subscriptions = relationship("MedicationAlertSubscription", back_populates="user", cascade="all, delete-orphan")
     badges = relationship("UserBadge", back_populates="user", cascade="all, delete-orphan")
+
+
+Index("uq_users_nickname_lower", func.lower(User.nickname), unique=True)
 
 
 class Pharmacy(Base):
