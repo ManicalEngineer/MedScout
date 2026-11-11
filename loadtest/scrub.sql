@@ -11,9 +11,11 @@
 --
 --      createdb medscout_loadtest
 --      pg_restore -d medscout_loadtest prod_dump.dump        # on a machine that is not production
+--      export LOADTEST_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(18))')"
 --      psql -d medscout_loadtest -v scrub_confirm=yes \
---           -v pw_hash="$(python -c "import bcrypt;print(bcrypt.hashpw(b'LoadTest-pw-123', bcrypt.gensalt()).decode())")" \
+--           -v pw_hash="$(python -c 'import bcrypt,os;print(bcrypt.hashpw(os.environ["LOADTEST_PASSWORD"].encode(), bcrypt.gensalt()).decode())')" \
 --           -f loadtest/scrub.sql
+--      # then run k6 with the same LOADTEST_PASSWORD in the environment
 --
 --  Safeguards (all must pass or nothing changes; the script is one transaction):
 --    * psql variable scrub_confirm=yes must be passed
