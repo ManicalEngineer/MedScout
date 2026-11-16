@@ -239,7 +239,7 @@ export default function TermsOfServicePage() {
         <br />
         Address: 4 New Hampshire Ct, Rexford, NY 12148
         <br />
-        Website: getmedscout.com
+        Website: medscout.tech
       </p>
 
       <div className="mt-16 border-t border-[#30363D] pt-8">

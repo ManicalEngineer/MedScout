@@ -12,6 +12,10 @@ function H2({ children }: { children: React.ReactNode }) {
   )
 }
 
+function H3({ children }: { children: React.ReactNode }) {
+  return <h3 className="mt-6 mb-2 text-lg font-semibold text-[#F0F6FC]">{children}</h3>
+}
+
 function P({ children }: { children: React.ReactNode }) {
   return <p className="mb-4 leading-relaxed text-[#8B949E]">{children}</p>
 }
@@ -242,6 +246,20 @@ export default function PrivacyPolicyPage() {
         community report or free-text field intended for stock information.
       </P>
 
+      <H3>Badges, streaks, and nicknames</H3>
+      <P>
+        When you contribute reports, MedScout keeps a running count of your contributions, the
+        badges you have earned (with the date), and a monthly contribution streak. These are
+        counters tied to your account. They are not tied to any particular report, pharmacy,
+        medication, or location, and a badge is never based on what a report said.
+      </P>
+      <P>
+        You may choose a nickname. It is optional, it is shown only to you, and it is never
+        attached to a community report or shared with commercial data customers. You can change
+        or remove it, or hide badges and streaks entirely, in your profile. Deleting your account
+        deletes your nickname, badges, and streak.
+      </P>
+
       <H2>7. Location Information</H2>
       <P>MedScout may use pharmacy locations, ZIP codes, or approximate geographic areas to:</P>
       <UL>
@@ -374,7 +392,7 @@ export default function PrivacyPolicyPage() {
         <br />
         Company: MedScout
         <br />
-        Website: getmedscout.com
+        Website: medscout.tech
       </p>
 
       <div className="mt-16 border-t border-[#30363D] pt-8">
