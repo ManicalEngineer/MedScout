@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from gamification import AREA_MIN_REPORTED, _utc_day, present_count
-from models import ReportStatsDaily
+from models import ReportStatsDaily, User
 from rate_limit import ip_key_func, limiter
 from timeutil import utcnow
 
@@ -38,6 +38,43 @@ def _sum(db: Session, *filters) -> int:
     for f in filters:
         q = q.filter(f)
     return int(q.scalar() or 0)
+
+
+def _signups(db: Session, today) -> dict:
+    """Account counts from users.created_at. Aggregates only; the server has no
+    record of installs that never register or of the device platform."""
+    day = func.date(User.created_at)
+
+    def count(*filters) -> int:
+        q = db.query(func.count(User.id))
+        for f in filters:
+            q = q.filter(f)
+        return int(q.scalar() or 0)
+
+    start7 = utcnow() - timedelta(days=7)
+    start30 = utcnow() - timedelta(days=30)
+    by_day = {
+        str(d): int(n)
+        for d, n in db.query(day, func.count(User.id))
+        .filter(User.created_at >= utcnow() - timedelta(days=DAILY_DAYS)).group_by(day).all()
+    }
+    return {
+        "total": count(),
+        "last_7_days": count(User.created_at >= start7),
+        "last_30_days": count(User.created_at >= start30),
+        "by_sign_in_method": {
+            "apple": count(User.apple_sub.isnot(None)),
+            "google": count(User.google_sub.isnot(None)),
+            "email_password": count(User.hashed_password.isnot(None)),
+        },
+        "with_push_notifications": count(User.push_token.isnot(None)),
+        "with_at_least_one_report": count(User.contribution_count > 0),
+        "last_14_days": [
+            {"day": (today - timedelta(days=i)).isoformat(),
+             "count": by_day.get((today - timedelta(days=i)).isoformat(), 0)}
+            for i in range(DAILY_DAYS)
+        ],
+    }
 
 
 @router.get("/report-stats")
@@ -119,5 +156,6 @@ def report_stats(
             .filter(ReportStatsDaily.zip_code != "").scalar() or 0,
         "top_areas": top_areas,
         "last_14_days": last_14_days,
+        "signups": _signups(db, today),
         "note": f"Areas under {AREA_MIN_REPORTED} reports are shown as 'fewer than {AREA_MIN_REPORTED}'.",
     }

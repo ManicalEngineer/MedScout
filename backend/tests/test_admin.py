@@ -50,3 +50,18 @@ def test_totals_windows_and_small_area_suppression(client, monkeypatch):
     assert areas["B2"]["all_time"] == {"count": None, "fewer_than": 10}
     assert len(d["last_14_days"]) == 14
     assert d["last_14_days"][0]["count"] == 12
+
+
+def test_signup_counts(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret")
+    from conftest import register
+    register(client, "a@test.com")
+    register(client, "b@test.com")
+    d = client.get(URL, headers={"X-Admin-Key": "s3cret"}).json()["signups"]
+    assert d["total"] == 2 and d["last_7_days"] == 2 and d["last_30_days"] == 2
+    assert d["by_sign_in_method"]["email_password"] == 2
+    assert d["with_at_least_one_report"] == 0
+    assert d["last_14_days"][0]["count"] == 2
+    assert sum(x["count"] for x in d["last_14_days"]) == 2
+    # no emails or ids anywhere in the response
+    assert "@" not in str(d)
