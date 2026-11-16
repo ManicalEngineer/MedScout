@@ -7,6 +7,7 @@ from .calls import router as calls_router
 from .availability import router as availability_router
 from .scripts import router as scripts_router
 from .analytics import router as analytics_router
+from .admin import router as admin_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
@@ -16,3 +17,4 @@ api_router.include_router(calls_router, prefix="/calls", tags=["calls"])
 api_router.include_router(availability_router, prefix="/availability", tags=["availability"])
 api_router.include_router(scripts_router, prefix="/scripts", tags=["scripts"])
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
