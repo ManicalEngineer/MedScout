@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { EarnedBadge } from './gamification';
 
 export interface CallLog {
   id: number;
@@ -34,7 +35,9 @@ export function logCall(body: {
   expected_restock_date?: string;
   notes?: string;
 }) {
-  return api.post<CallLog>('/calls/', body);
+  // new_badges: badges this call just earned (empty unless it was shared with
+  // the community, and always empty if the user has hidden badges).
+  return api.post<CallLog & { new_badges?: EarnedBadge[] }>('/calls/', body);
 }
 
 export function getScript(params: {

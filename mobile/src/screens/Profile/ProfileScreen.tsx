@@ -10,6 +10,8 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Toggle } from '../../components/Toggle';
 import { PasswordInput } from '../../components/PasswordInput';
+import { ProgressSection } from '../../components/ProgressSection';
+import { getProgress, Progress } from '../../api/gamification';
 import { ADHD_MEDS, MedicationOption, MedicationPickerFields } from '../../components/MedicationPicker';
 import { useAuth } from '../../context/AuthContext';
 import { deleteAccount, updateMe } from '../../api/auth';
@@ -23,8 +25,8 @@ import {
   registerForPushNotificationsAsync, refreshPushTokenIfPermitted,
 } from '../../services/pushNotifications';
 
-const PRIVACY_URL = 'https://getmedscout.com/privacy';
-const TERMS_URL = 'https://getmedscout.com/terms';
+const PRIVACY_URL = 'https://medscout.tech/privacy';
+const TERMS_URL = 'https://medscout.tech/terms';
 const SUPPORT_EMAIL = 'support@getmedscout.com';
 
 const DEFAULT_ALERT_SETTINGS: AlertSettings = {
@@ -48,6 +50,7 @@ export function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(DEFAULT_ALERT_SETTINGS);
   const [subscriptions, setSubscriptions] = useState<AlertSubscription[]>([]);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const pushSyncedRef = useRef(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
@@ -75,6 +78,7 @@ export function ProfileScreen() {
       }
       setCountdowns(cds);
     } catch { /* silent */ }
+    getProgress().then(setProgress).catch(() => {});
     try {
       setAlertSettings(await getAlertSettings());
       setSubscriptions(await listAlertSubscriptions());
@@ -269,6 +273,9 @@ export function ProfileScreen() {
       <Card style={styles.accountCard}>
         <View style={styles.accountRow}>
           <View style={styles.accountInfo}>
+            {progress?.gamification_enabled && progress.nickname && (
+              <Text style={styles.nicknameHeader}>{progress.nickname}</Text>
+            )}
             <Text style={styles.email}>{user?.email}</Text>
             <Text style={[styles.tier, { color: tierColor }]}>{tierLabel}</Text>
           </View>
@@ -277,6 +284,8 @@ export function ProfileScreen() {
           </Button>
         </View>
       </Card>
+
+      {progress && <ProgressSection progress={progress} onChanged={load} />}
 
       {/* Medication profiles */}
       <Text style={styles.sectionLabel}>MEDICATION PROFILES</Text>
@@ -588,6 +597,7 @@ const styles = StyleSheet.create({
   accountRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   accountInfo: { flex: 1 },
   email: { fontSize: 15, fontWeight: '600', color: TOK.text, marginBottom: 4 },
+  nicknameHeader: { fontSize: 18, fontWeight: '700', color: TOK.text, marginBottom: 2 },
   tier: { fontSize: 12, fontWeight: '600' },
   sectionLabel: { fontSize: 11, color: TOK.textDim, fontWeight: '600', letterSpacing: 0.6, marginBottom: 8 },
   profileCard: { marginBottom: 10 },

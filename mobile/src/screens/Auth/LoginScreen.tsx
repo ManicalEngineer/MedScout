@@ -262,9 +262,9 @@ export function LoginScreen({ navigation }: Props) {
 
         <Text style={styles.legal}>
           By continuing you agree to our{' '}
-          <Text style={styles.legalLink} accessibilityRole="link" onPress={() => Linking.openURL('https://getmedscout.com/terms').catch(() => {})}>Terms</Text>
+          <Text style={styles.legalLink} accessibilityRole="link" onPress={() => Linking.openURL('https://medscout.tech/terms').catch(() => {})}>Terms</Text>
           {' '}and{' '}
-          <Text style={styles.legalLink} accessibilityRole="link" onPress={() => Linking.openURL('https://getmedscout.com/privacy').catch(() => {})}>Privacy Policy</Text>.
+          <Text style={styles.legalLink} accessibilityRole="link" onPress={() => Linking.openURL('https://medscout.tech/privacy').catch(() => {})}>Privacy Policy</Text>.
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -18,6 +18,8 @@ import { HuntStackParamList } from '../../navigation/AppNavigator';
 import { getActiveProfile } from '../../storage/medicationProfiles';
 import { useAuth } from '../../context/AuthContext';
 import { maybePromptForReview } from '../../services/reviewPrompt';
+import { BadgeCelebration } from '../../components/BadgeCelebration';
+import type { EarnedBadge } from '../../api/gamification';
 
 type Nav = NativeStackNavigationProp<HuntStackParamList, 'PostCall'>;
 type Route = RouteProp<HuntStackParamList, 'PostCall'>;
@@ -114,6 +116,7 @@ export function PostCallScreen() {
   const [editingTranscript, setEditingTranscript] = useState(false);
   const [restockDate, setRestockDate] = useState<Date | null>(null);
   const [notes, setNotes] = useState('');
+  const [newBadges, setNewBadges] = useState<EarnedBadge[]>([]);
 
   const whisper = useWhisper();
   const isTranscribing = whisper.status === 'transcribing' || whisper.status === 'downloading' || whisper.status === 'loading';
@@ -162,7 +165,7 @@ export function PostCallScreen() {
         medName = activeProfile?.medication_name;
         medStrength = activeProfile?.strength;
       }
-      await logCall({
+      const saved = await logCall({
         pharmacy_id: pharmacyId,
         status: effectiveStatus,
         contribute_to_community: contribute,
@@ -174,6 +177,11 @@ export function PostCallScreen() {
       await deleteAudio();
       // Fire-and-forget: a good moment (pharmacy confirmed in stock), never
       // blocks navigation on it either way.
+      if (saved.new_badges?.length) {
+        // Celebrate first; the review prompt would compete with it.
+        setNewBadges(saved.new_badges);
+        return;
+      }
       if (effectiveStatus === 'in_stock') maybePromptForReview(isFirstLaunchSession);
       navigation.navigate('HuntMain');
     } catch (e: any) {
@@ -357,6 +365,10 @@ export function PostCallScreen() {
         </Button>
       </View>
     </KeyboardAvoidingView>
+    <BadgeCelebration
+      badges={newBadges}
+      onClose={() => { setNewBadges([]); navigation.navigate('HuntMain'); }}
+    />
     </SafeAreaView>
   );
 }

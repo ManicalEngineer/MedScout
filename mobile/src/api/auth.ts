@@ -7,6 +7,8 @@ export interface User {
   caregiver_mode: boolean;
   subscription_tier: 'free' | 'contributor' | 'premium';
   has_password: boolean;
+  nickname?: string | null;
+  gamification_enabled?: boolean;
 }
 
 interface TokenResponse {
@@ -76,8 +78,8 @@ export function getMe() {
   return api.get<User>('/users/me');
 }
 
-export function updateMe(body: { caregiver_mode?: boolean; push_token?: string }) {
-  return api.patch<{ id: number; caregiver_mode: boolean }>('/users/me', body);
+export function updateMe(body: { caregiver_mode?: boolean; push_token?: string; gamification_enabled?: boolean }) {
+  return api.patch<{ id: number; caregiver_mode: boolean; gamification_enabled: boolean }>('/users/me', body);
 }
 
 /** Permanently deletes the account and everything attached to it. */

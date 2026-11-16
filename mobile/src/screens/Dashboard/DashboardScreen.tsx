@@ -15,6 +15,7 @@ import { listProfiles, MedicationProfile } from '../../storage/medicationProfile
 import { listPharmacies, Pharmacy } from '../../api/pharmacies';
 import { listCallLogs, CallLog } from '../../api/calls';
 import { getShortageStatus, ShortageStatus } from '../../api/availability';
+import { getAreaStats, getProgress, AreaStats, Progress } from '../../api/gamification';
 
 const STATUS_DISPLAY: Record<string, { kind: string; label: string }> = {
   in_stock: { kind: 'ok', label: 'In stock' },
@@ -34,6 +35,8 @@ export function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [shortage, setShortage] = useState<ShortageStatus | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [area, setArea] = useState<AreaStats | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -47,6 +50,14 @@ export function DashboardScreen() {
       setCountdownsByMed(Object.fromEntries(cds.map(c => [c.medication_name, c])));
       setPharmacies(pharms);
       setCalls(logs);
+
+      // Non-blocking: neither should hold up the rest of Home.
+      getProgress().then(setProgress).catch(() => {});
+      // "Your area" = the area of the first saved pharmacy with a ZIP. The ZIP
+      // goes to our own API only, to look up an anonymous area total.
+      const zip = pharms.find(p => p.zip_code)?.zip_code;
+      if (zip) getAreaStats(zip).then(setArea).catch(() => setArea(null));
+      else setArea(null);
 
       // Primary = whichever tracked medication has the most recent
       // last_fill_date — the one you most recently actually refilled, so
@@ -200,6 +211,38 @@ export function DashboardScreen() {
         {pharmacies.length} PHARMAC{pharmacies.length === 1 ? 'Y' : 'IES'} SAVED · {calledToday} CALLED TODAY
       </Text>
 
+      {/* Monthly streak — only once there is one, and never if badges are hidden. */}
+      {progress?.gamification_enabled && progress.streak.current_months > 0 && (
+        <TouchableOpacity
+          style={styles.streakChip}
+          onPress={() => navigation.navigate('Me')}
+          accessibilityRole="button"
+          accessibilityLabel={`${progress.streak.current_months} month reporting streak. Open profile`}
+        >
+          <Text style={styles.streakText}>
+            🔥 {progress.streak.current_months}-month streak
+            {!progress.streak.reported_this_month ? ' · share a call this month to keep it' : ''}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Community activity in your area (anonymous totals). */}
+      {area?.area_name && area.last_30_days && (
+        <Card style={styles.areaCard}>
+          <Text style={styles.areaLabel}>YOUR AREA</Text>
+          <Text style={styles.areaText}>
+            {area.last_30_days.count != null ? (
+              <>
+                <Text style={styles.areaCount}>{area.last_30_days.count.toLocaleString()} reports</Text>
+                {` in the ${area.area_name} area in the last 30 days.`}
+              </>
+            ) : (
+              `Fewer than ${area.last_30_days.fewer_than} reports in the ${area.area_name} area in the last 30 days. Share your next call to help people near you.`
+            )}
+          </Text>
+        </Card>
+      )}
+
       {/* Insight card */}
       {insight && (
         <Card accent style={styles.insightCard}>
@@ -270,6 +313,16 @@ const styles = StyleSheet.create({
   headline: { fontSize: 26, fontWeight: '700', color: TOK.text, letterSpacing: -0.6, marginBottom: 16 },
   ringWrap: { alignItems: 'center', marginBottom: 18 },
   stats: { fontSize: 11, color: TOK.textDim, textAlign: 'center', letterSpacing: 0.3, marginTop: 10, marginBottom: 16 },
+  streakChip: {
+    alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 8, minHeight: 36, justifyContent: 'center',
+    borderRadius: 999, borderWidth: 1, borderColor: 'rgba(249,115,22,0.4)', backgroundColor: TOK.primaryDim,
+    marginBottom: 16,
+  },
+  streakText: { fontSize: 12, fontWeight: '600', color: TOK.text },
+  areaCard: { marginBottom: 16 },
+  areaLabel: { fontSize: 11, color: TOK.textDim, fontWeight: '600', letterSpacing: 0.6, marginBottom: 6 },
+  areaText: { fontSize: 14, lineHeight: 20, color: TOK.text },
+  areaCount: { fontWeight: '700', color: TOK.primary },
   insightCard: {
     backgroundColor: TOK.primaryDim,
     borderColor: 'rgba(249,115,22,0.4)',
