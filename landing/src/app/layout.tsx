@@ -9,14 +9,24 @@ const lexend = Lexend({
   display: 'swap',
 })
 
+const TITLE = 'MedScout — Find ADHD medication in stock'
+const DESCRIPTION = 'Find ADHD medication in stock. Free on iPhone and Android.'
+
 export const metadata: Metadata = {
-  title: 'ADHD Med Survival Suite — Stop the Pharmacy Scavenger Hunt',
-  description:
-    'Track your pharmacy calls, predict your run-out date, and see where others are finding stock. Built for the ADHD community.',
+  metadataBase: new URL('https://www.medscout.tech'),
+  title: TITLE,
+  description: DESCRIPTION,
   openGraph: {
-    title: 'ADHD Med Survival Suite',
-    description: 'The Waze for ADHD meds. Join the waitlist.',
+    title: TITLE,
+    description: DESCRIPTION,
+    siteName: 'MedScout',
+    url: '/',
     type: 'website',
+  },
+  twitter: {
+    card: 'summary',
+    title: TITLE,
+    description: DESCRIPTION,
   },
 }
 

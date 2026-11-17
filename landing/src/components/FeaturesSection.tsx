@@ -1,4 +1,10 @@
-import { MapMockup } from './MapMockup'
+import { ScreenshotSlot } from './ScreenshotSlot'
+
+const MAP_ICON = (
+  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0Z" />
+  </svg>
+)
 
 const features = [
   {
@@ -10,6 +16,7 @@ const features = [
     title: 'Smart Call Tracker',
     description:
       'Log every CVS and Walgreens you call. AI extracts the shipment day and stock status from your voice — no typing required during a stressful hunt.',
+    screenshot: { file: 'smart-call-tracker.png', alt: 'MedScout Smart Call Tracker screen' },
   },
   {
     icon: (
@@ -20,16 +27,7 @@ const features = [
     title: 'Refill Countdown',
     description:
       'A visual timer that tells you exactly when to start the hunt — not when it\'s already too late. Prompts you 5–7 days before your last pill.',
-  },
-  {
-    icon: (
-      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0Z" />
-      </svg>
-    ),
-    title: 'Community Availability Map',
-    description:
-      'Real-time, human-verified reports. See which strengths and manufacturers are landing in your zip code right now — before you start dialing.',
+    screenshot: { file: 'refill-countdown.png', alt: 'MedScout Refill Countdown screen' },
   },
 ]
 
@@ -45,15 +43,14 @@ export function FeaturesSection() {
           </h2>
         </div>
 
-        {/* Layout: feature list left, map right */}
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
-          {/* Feature cards */}
-          <div className="flex flex-col gap-4 lg:w-2/5">
-            {features.map((f, i) => (
-              <div
-                key={i}
-                className="group flex gap-4 rounded-xl border border-[#30363D] bg-[#0D1117] p-5 transition-colors hover:border-[#F97316]/40"
-              >
+        {/* Feature cards: two app features + the community map invitation */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-6">
+          {features.map((f) => (
+            <div
+              key={f.title}
+              className="group flex flex-col rounded-xl border border-[#30363D] bg-[#0D1117] p-5 transition-colors hover:border-[#F97316]/40"
+            >
+              <div className="flex gap-4">
                 <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#161B22] text-[#F97316] border border-[#30363D] group-hover:border-[#F97316]/40">
                   {f.icon}
                 </div>
@@ -62,18 +59,33 @@ export function FeaturesSection() {
                   <p className="text-sm leading-relaxed text-[#8B949E]">{f.description}</p>
                 </div>
               </div>
-            ))}
-          </div>
+              {/* SCREENSHOT SLOT: hidden until public/screenshots/<file> exists */}
+              <ScreenshotSlot file={f.screenshot.file} alt={f.screenshot.alt} />
+            </div>
+          ))}
 
-          {/* Map mockup */}
-          <div className="flex flex-1 flex-col items-center justify-start lg:items-start">
-            <p className="mb-3 text-xs font-medium uppercase tracking-widest text-[#8B949E]">
-              Community Availability Map — Preview
+          {/* Community map: an invitation, not a preview. No stock data here. */}
+          <div className="flex flex-col rounded-xl border border-dashed border-[#F97316]/40 bg-[#0D1117] p-5 md:col-span-2 lg:col-span-1">
+            <div className="flex gap-4">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#161B22] text-[#F97316] border border-[#F97316]/40">
+                {MAP_ICON}
+              </div>
+              <div>
+                <h3 className="mb-1 font-semibold text-[#F0F6FC]">Community map</h3>
+                <p className="text-sm leading-relaxed text-[#8B949E]">
+                  Growing with every report. <span className="text-[#F0F6FC]">Be one of the first reporters.</span>
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-relaxed text-[#8B949E]">
+              Every call you log adds to the map for people near you. The more reports in your area, the less anyone has to dial.
             </p>
-            <MapMockup />
-            <p className="mt-3 text-xs text-[#8B949E]">
-              * Simulated data. Real map powered by contributor reports.
-            </p>
+            <a
+              href="/get?src=map_card"
+              className="mt-4 inline-flex w-fit items-center gap-1 text-sm font-semibold text-[#F97316] transition-colors hover:text-[#EA6C0A]"
+            >
+              Get the app and start reporting &rarr;
+            </a>
           </div>
         </div>
       </div>
