@@ -30,7 +30,7 @@ export function GetAppButton({ qrSvg }: { qrSvg: string }) {
       <a
         href="/get?src=hero"
         onClick={handleClick}
-        className="rounded-lg bg-[#F97316] px-7 py-3.5 text-base font-semibold text-white shadow-lg transition-colors hover:bg-[#EA6C0A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316]"
+        className="rounded-lg bg-[#F97316] px-6 py-3 text-sm font-semibold sm:px-7 sm:py-3.5 sm:text-base text-white shadow-lg transition-colors hover:bg-[#EA6C0A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316]"
         style={{ boxShadow: '0 0 24px rgba(249,115,22,0.25)' }}
       >
         Get the App &rarr;
