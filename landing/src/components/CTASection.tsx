@@ -3,12 +3,11 @@
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import posthog from 'posthog-js'
-import { Apple, ArrowUpRight, Smartphone } from 'lucide-react'
+import { StoreBadges } from './StoreBadges'
 
 const perks = [
   { icon: '🗺️', label: 'Regional heatmaps' },
   { icon: '🔔', label: 'Shortage alerts' },
-  { icon: '📊', label: 'Advanced predictions' },
 ]
 
 function ThankYouPanel() {
@@ -95,10 +94,7 @@ function ThankYouPanel() {
   )
 }
 
-const APP_STORE_URL = 'https://apps.apple.com/app/id6794949603'
-const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.medscout.app'
-
-export function CTASection() {
+export function CTASection({ qrSvg }: { qrSvg: string }) {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
@@ -127,10 +123,6 @@ export function CTASection() {
     if (hasFiredFocusRef.current) return
     posthog.capture('cta_email_focused')
     hasFiredFocusRef.current = true
-  }
-
-  function handlePlatformClick(platform: 'ios' | 'android') {
-    posthog.capture('beta_cta_clicked', { platform })
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -164,7 +156,7 @@ export function CTASection() {
   return (
     <section
       ref={sectionRef}
-      id="waitlist"
+      id="download"
       className="relative flex min-h-screen flex-col items-center justify-center px-6 py-20 text-center overflow-hidden"
     >
       {/* Glow */}
@@ -178,118 +170,97 @@ export function CTASection() {
       />
 
       <div className="relative z-10 flex w-full max-w-xl flex-col items-center gap-8">
-        {status === 'success' ? (
-          <ThankYouPanel />
-        ) : (
-          <>
-            {/* Badge */}
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-[#30363D]" style={{ maxWidth: 64 }} />
-              <span className="text-xs font-medium uppercase tracking-widest text-[#8B949E]">
-                Stop the monthly guessing game
-              </span>
-              <div className="h-px flex-1 bg-[#30363D]" style={{ maxWidth: 64 }} />
+        {/* Badge */}
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-[#30363D]" style={{ maxWidth: 64 }} />
+          <span className="text-xs font-medium uppercase tracking-widest text-[#8B949E]">
+            Stop the monthly guessing game
+          </span>
+          <div className="h-px flex-1 bg-[#30363D]" style={{ maxWidth: 64 }} />
+        </div>
+
+        {/* Headline */}
+        <div>
+          <h2 className="mb-4 text-3xl font-bold leading-tight text-[#F0F6FC] sm:text-4xl lg:text-5xl">
+            Know where it is{' '}
+            <span className="text-[#F97316]">before you run out.</span>
+          </h2>
+          <p className="text-lg leading-relaxed text-[#8B949E]">
+            Every contributor shares their fill status — you get real-time stock intelligence in return. Free, forever, for contributors.
+          </p>
+        </div>
+
+        {/* Perks */}
+        <div className="flex flex-wrap justify-center gap-3">
+          {perks.map((p) => (
+            <div
+              key={p.label}
+              className="flex items-center gap-2 rounded-full border border-[#30363D] bg-[#161B22] px-4 py-2 text-sm text-[#F0F6FC]"
+            >
+              <span>{p.icon}</span>
+              <span>{p.label}</span>
             </div>
+          ))}
+        </div>
 
-            {/* Headline */}
-            <div>
-              <h2 className="mb-4 text-3xl font-bold leading-tight text-[#F0F6FC] sm:text-4xl lg:text-5xl">
-                Know where it is{' '}
-                <span className="text-[#F97316]">before you run out.</span>
-              </h2>
-              <p className="text-lg leading-relaxed text-[#8B949E]">
-                Every contributor shares their fill status — you get real-time stock intelligence in return. Free, forever, for contributors.
-              </p>
-            </div>
-
-            {/* Perks */}
-            <div className="flex flex-wrap justify-center gap-3">
-              {perks.map((p) => (
-                <div
-                  key={p.label}
-                  className="flex items-center gap-2 rounded-full border border-[#30363D] bg-[#161B22] px-4 py-2 text-sm text-[#F0F6FC]"
-                >
-                  <span>{p.icon}</span>
-                  <span>{p.label}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Platform beta access */}
-            <div className="flex w-full flex-col gap-3 text-left">
-              <div>
-                <p className="text-sm font-semibold text-[#F0F6FC]">Get the app</p>
-                <p className="mt-1 text-sm text-[#8B949E]">Available on iPhone and Android.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <a
-                  href={APP_STORE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => handlePlatformClick('ios')}
-                  className="group flex items-center justify-between rounded-xl border border-[#F97316]/40 bg-[#F97316]/10 px-4 py-4 text-left transition-colors hover:border-[#F97316] hover:bg-[#F97316]/20"
-                >
-                  <span className="flex items-center gap-3">
-                    <Apple className="h-5 w-5 text-[#F97316]" aria-hidden />
-                    <span>
-                      <span className="block font-semibold text-[#F0F6FC]">Download on the App Store</span>
-                      <span className="block text-xs text-[#8B949E]">iPhone</span>
-                    </span>
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 text-[#8B949E] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
-                </a>
-                <a
-                  href={PLAY_STORE_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => handlePlatformClick('android')}
-                  className="group flex items-center justify-between rounded-xl border border-[#30363D] bg-[#161B22] px-4 py-4 text-left transition-colors hover:border-[#F97316] hover:bg-[#1C2128]"
-                >
-                  <span className="flex items-center gap-3">
-                    <Smartphone className="h-5 w-5 text-[#F97316]" aria-hidden />
-                    <span>
-                      <span className="block font-semibold text-[#F0F6FC]">Get it on Google Play</span>
-                      <span className="block text-xs text-[#8B949E]">Android</span>
-                    </span>
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 text-[#8B949E] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
-                </a>
-              </div>
-            </div>
-
-            {/* Email form */}
-            <form onSubmit={handleSubmit} className="flex w-full flex-col gap-3 sm:flex-row">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onFocus={handleEmailFocus}
-                placeholder="you@example.com"
-                className="flex-1 rounded-lg border border-[#30363D] bg-[#161B22] px-4 py-3.5 text-[#F0F6FC] placeholder-[#8B949E] outline-none transition-colors focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316]"
-              />
-              <button
-                type="submit"
-                disabled={status === 'loading'}
-                className="rounded-lg bg-[#F97316] px-6 py-3.5 font-semibold text-white transition-colors hover:bg-[#EA6C0A] disabled:opacity-60 whitespace-nowrap"
-                style={{ boxShadow: '0 0 20px rgba(249,115,22,0.2)' }}
-              >
-                {status === 'loading' ? 'Subscribing…' : 'Get Updates'}
-              </button>
-            </form>
-
-            {status === 'error' && (
-              <p className="text-sm text-[#EF4444]">{errorMsg}</p>
-            )}
-
-            <p className="text-xs text-[#8B949E]">
-              Product updates only. No spam. Unsubscribe anytime.
+        {/* Get the app: badges everywhere, QR on wider screens */}
+        <div className="flex w-full flex-col items-center gap-5">
+          <StoreBadges src="download" />
+          <div className="hidden items-center gap-4 rounded-xl border border-[#30363D] bg-[#161B22] p-4 text-left md:flex">
+            <div
+              className="h-28 w-28 shrink-0 overflow-hidden rounded-lg bg-white p-1.5"
+              role="img"
+              aria-label="QR code linking to the MedScout app"
+              dangerouslySetInnerHTML={{ __html: qrSvg }}
+            />
+            <p className="text-sm text-[#8B949E]">
+              <span className="block font-semibold text-[#F0F6FC]">On a computer?</span>
+              Scan with your phone camera. It opens the right store.
             </p>
-          </>
-        )}
+          </div>
+        </div>
+
+        {/* Product updates: deliberately low-key, secondary to installing */}
+        <div id="updates" className="flex w-full flex-col items-center gap-3 border-t border-[#30363D] pt-8">
+          {status === 'success' ? (
+            <ThankYouPanel />
+          ) : (
+            <>
+              <p className="text-sm text-[#8B949E]">Not ready to install? Get the occasional product update.</p>
+              <form onSubmit={handleSubmit} className="flex w-full max-w-md flex-col gap-2 sm:flex-row">
+                <label htmlFor="updates-email" className="sr-only">Email address</label>
+                <input
+                  id="updates-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onFocus={handleEmailFocus}
+                  placeholder="you@example.com"
+                  className="flex-1 rounded-lg border border-[#30363D] bg-[#161B22] px-3 py-2.5 text-sm text-[#F0F6FC] placeholder-[#8B949E] outline-none transition-colors focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316]"
+                />
+                <button
+                  type="submit"
+                  disabled={status === 'loading'}
+                  className="rounded-lg border border-[#30363D] bg-[#161B22] px-4 py-2.5 text-sm font-medium text-[#F0F6FC] transition-colors hover:border-[#8B949E] disabled:opacity-60 whitespace-nowrap"
+                >
+                  {status === 'loading' ? 'Subscribing…' : 'Get Updates'}
+                </button>
+              </form>
+
+              {status === 'error' && (
+                <p className="text-sm text-[#EF4444]">{errorMsg}</p>
+              )}
+
+              <p className="text-xs text-[#8B949E]">
+                Product updates only. No spam. Unsubscribe anytime.
+              </p>
+            </>
+          )}
+        </div>
 
         <div className="flex items-center gap-3 text-xs text-[#30363D]">
-          <span>ADHD Med Survival Suite · 2026</span>
+          <span>MedScout · 2026</span>
           <span aria-hidden>·</span>
           <Link href="/privacy" className="transition-colors hover:text-[#8B949E]">
             Privacy Policy

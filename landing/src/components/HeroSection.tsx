@@ -1,6 +1,8 @@
 import { ChevronDown } from 'lucide-react'
+import { GetAppButton } from './GetAppButton'
+import { StoreBadges } from './StoreBadges'
 
-export function HeroSection() {
+export function HeroSection({ qrSvg }: { qrSvg: string }) {
   return (
     <section className="relative flex min-h-screen flex-col items-center justify-center px-6 py-20 text-center overflow-hidden">
       {/* Subtle radial glow behind headline */}
@@ -19,8 +21,8 @@ export function HeroSection() {
       </div>
 
       <div className="relative z-10 flex max-w-3xl flex-col items-center gap-6">
-        {/* Badge */}
-        <span className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-[#30363D] bg-[#161B22] px-4 py-1.5 text-sm text-[#8B949E]">
+        {/* Availability note */}
+        <span className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-[#F97316]/50 bg-[#F97316]/10 px-4 py-1.5 text-sm font-semibold text-[#F0F6FC] sm:text-base">
           <span
             className="inline-block h-2 w-2 rounded-full bg-[#22C55E]"
             style={{ animation: 'pulse-dot 2s ease-in-out infinite' }}
@@ -40,8 +42,19 @@ export function HeroSection() {
           <span className="text-[#F0F6FC]">No calls. No drives. No panic.</span>
         </p>
 
+        {/* Store badges: the main action */}
+        <div className="animate-fade-up-delay-2">
+          <StoreBadges src="hero" size="lg" />
+        </div>
+
+        {/* Smart link: phone → its store, desktop → QR panel */}
+        <div className="animate-fade-up-delay-3 flex flex-col items-center gap-3">
+          <GetAppButton qrSvg={qrSvg} />
+          <p className="text-sm text-[#8B949E]">Free for contributors. Report what you find, get access free.</p>
+        </div>
+
         {/* Feature tags */}
-        <div className="animate-fade-up-delay-3 flex flex-wrap justify-center gap-3 text-sm text-[#8B949E]">
+        <div className="animate-fade-up-delay-4 flex flex-wrap justify-center gap-3 text-sm text-[#8B949E]">
           {['Track calls in one tap', 'Predict your run-out date', 'See where others find stock'].map(
             (tag) => (
               <span
@@ -53,18 +66,6 @@ export function HeroSection() {
               </span>
             )
           )}
-        </div>
-
-        {/* CTA */}
-        <div className="animate-fade-up-delay-4 flex flex-col items-center gap-3">
-          <a
-            href="#waitlist"
-            className="rounded-lg bg-[#F97316] px-8 py-4 text-base font-semibold text-white shadow-lg transition-colors hover:bg-[#EA6C0A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#F97316]"
-            style={{ boxShadow: '0 0 24px rgba(249,115,22,0.25)' }}
-          >
-            Find My Medication &rarr;
-          </a>
-          <p className="text-sm text-[#8B949E]">Free for early contributors. No spam, just survival.</p>
         </div>
       </div>
 

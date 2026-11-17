@@ -1,13 +1,16 @@
 import { HeroSection } from '@/components/HeroSection'
 import { FeaturesSection } from '@/components/FeaturesSection'
 import { CTASection } from '@/components/CTASection'
+import { getQrSvg } from '@/lib/qr'
 
-export default function Home() {
+export default async function Home() {
+  // Generated at build time; the page stays static.
+  const qrSvg = await getQrSvg()
   return (
     <>
-      <HeroSection />
+      <HeroSection qrSvg={qrSvg} />
       <FeaturesSection />
-      <CTASection />
+      <CTASection qrSvg={qrSvg} />
     </>
   )
 }
