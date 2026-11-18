@@ -178,6 +178,10 @@ def get_map_reports(
                 AvailabilityReport.reported_at >= cutoff,
                 AvailabilityReport.source.in_(report_sources),
                 AvailabilityReport.hidden_at.is_(None),
+                # A report whose pharmacy location couldn't be confirmed has no
+                # coordinates; it can't be placed, so it never goes on the map.
+                AvailabilityReport.latitude.isnot(None),
+                AvailabilityReport.longitude.isnot(None),
             )
             if medication_name:
                 q = q.filter(AvailabilityReport.medication_name.icontains(medication_name, autoescape=True))
@@ -217,7 +221,7 @@ def get_map_reports(
         radius_km = radius_miles * 1.60934
         results = [
             r for r in results
-            if r["latitude"] and r["longitude"]
+            if r["latitude"] is not None and r["longitude"] is not None
             and _haversine_km(lat, lng, r["latitude"], r["longitude"]) <= radius_km
         ]
 

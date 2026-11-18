@@ -10,7 +10,10 @@ import * as Location from 'expo-location';
 import { TOK } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
-import { nearbyPharmacies, addPharmacyFromPlace, createPharmacy, NearbyCandidate } from '../../api/pharmacies';
+import {
+  nearbyPharmacies, addPharmacyFromPlace, createPharmacy, NearbyCandidate,
+  UNVERIFIED_LOCATION_TITLE, UNVERIFIED_LOCATION_MESSAGE,
+} from '../../api/pharmacies';
 import { HuntStackParamList } from '../../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<HuntStackParamList, 'AddPharmacy'>;
@@ -79,17 +82,29 @@ export function AddPharmacyScreen() {
   };
 
   const addManualPharmacy = async () => {
-    if (!manualName.trim() || !manualPhone.trim()) {
-      Alert.alert('Missing info', 'Name and phone are required.');
+    if (!manualName.trim() || !manualPhone.trim() || !manualAddress.trim()) {
+      // The address is how we place this pharmacy on the map; without it,
+      // reports from calls to it can't count toward the user's area.
+      Alert.alert('Missing info', 'Name, phone and full street address are required.');
       return;
     }
     setSavingManual(true);
     try {
-      await createPharmacy({
+      const saved = await createPharmacy({
         name: manualName.trim(),
         phone: manualPhone.trim(),
-        address: manualAddress.trim() || undefined,
+        address: manualAddress.trim(),
       });
+      if (saved.location_unverified) {
+        // Saved either way; this just explains why it won't be on the map.
+        // Three buttons is the most Android's Alert shows.
+        Alert.alert(UNVERIFIED_LOCATION_TITLE, UNVERIFIED_LOCATION_MESSAGE, [
+          { text: 'Search nearby', onPress: () => { setMode('nearby'); loadNearby(); } },
+          { text: 'Edit address', onPress: () => navigation.replace('PharmacyDetail', { pharmacyId: saved.id, editAddress: true }) },
+          { text: 'Keep anyway', style: 'cancel', onPress: () => navigation.goBack() },
+        ]);
+        return;
+      }
       navigation.goBack();
     } catch (e: any) {
       Alert.alert('Could not add', e?.message || 'Could not add pharmacy.');
@@ -158,13 +173,15 @@ export function AddPharmacyScreen() {
               placeholderTextColor={TOK.textDim}
               keyboardType="phone-pad"
             />
-            <Text style={[styles.label, { marginTop: 12 }]}>ADDRESS (OPTIONAL)</Text>
+            <Text style={[styles.label, { marginTop: 12 }]}>ADDRESS</Text>
             <TextInput
               testID="manual-pharmacy-address-input"
               style={styles.input}
               value={manualAddress}
               onChangeText={setManualAddress}
-              placeholder="123 Main St"
+              placeholder="123 Main St, City, ST 12345"
+              autoComplete="street-address"
+              textContentType="fullStreetAddress"
               placeholderTextColor={TOK.textDim}
             />
             <Button

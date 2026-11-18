@@ -8,6 +8,12 @@ export interface Pharmacy {
   latitude?: number;
   longitude?: number;
   zip_code?: string;
+  /** True when the server couldn't confirm this pharmacy's location (no
+   * address, or the address couldn't be geocoded). Reports from it stay off
+   * the map and out of area totals. */
+  location_unverified?: boolean;
+  /** Only on create/update responses: what happened to the address lookup. */
+  geocode_status?: 'ok' | 'failed' | 'no_address' | 'provided' | null;
   is_vaulted: boolean;
   sort_order: number;
   last_call_status?: string;
@@ -52,6 +58,10 @@ export function createPharmacy(body: {
 }) {
   return api.post<Pharmacy>('/pharmacies/', body);
 }
+
+export const UNVERIFIED_LOCATION_TITLE = "Couldn't confirm this address";
+export const UNVERIFIED_LOCATION_MESSAGE =
+  "You can still call this pharmacy, but your reports won't appear on the map until its location is confirmed.";
 
 export function updatePharmacy(id: number, body: Partial<Pharmacy>) {
   return api.patch<Pharmacy>(`/pharmacies/${id}`, body);

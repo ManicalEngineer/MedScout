@@ -52,6 +52,23 @@ def test_totals_windows_and_small_area_suppression(client, monkeypatch):
     assert d["last_14_days"][0]["count"] == 12
 
 
+def test_unknown_location_bucket(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret")
+    _seed()
+    today = utcnow().date()
+    with SessionLocal() as db:
+        db.add_all([
+            ReportStatsDaily(day=today, channel="call", zip_code="", area_code="", count=3),
+            ReportStatsDaily(day=today - timedelta(days=45), channel="manual", zip_code="00000", area_code="", count=2),
+        ])
+        db.commit()
+    d = client.get(URL, headers={"X-Admin-Key": "s3cret"}).json()
+    assert d["unknown_location"] == {
+        "all_time": 5, "last_30_days": 3, "no_zip": 3, "zip_outside_named_areas": 2,
+    }
+    assert "" not in {a["area_code"] for a in d["top_areas"]}
+
+
 def test_signup_counts(client, monkeypatch):
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret")
     from conftest import register

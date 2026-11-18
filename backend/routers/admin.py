@@ -40,6 +40,19 @@ def _sum(db: Session, *filters) -> int:
     return int(q.scalar() or 0)
 
 
+def _unknown_location(db: Session, last30) -> dict:
+    """Reports that count toward totals but belong to no named area: either the
+    report had no ZIP (e.g. its pharmacy's address couldn't be geocoded) or the
+    ZIP isn't in data/zip_areas.csv. Raw counts, like the windows above."""
+    unknown = ReportStatsDaily.area_code == ""
+    return {
+        "all_time": _sum(db, unknown),
+        "last_30_days": _sum(db, unknown, last30),
+        "no_zip": _sum(db, unknown, ReportStatsDaily.zip_code == ""),
+        "zip_outside_named_areas": _sum(db, unknown, ReportStatsDaily.zip_code != ""),
+    }
+
+
 def _signups(db: Session, today) -> dict:
     """Account counts from users.created_at. Aggregates only; the server has no
     record of installs that never register or of the device platform."""
@@ -155,6 +168,7 @@ def report_stats(
         "distinct_zips": db.query(func.count(func.distinct(ReportStatsDaily.zip_code)))
             .filter(ReportStatsDaily.zip_code != "").scalar() or 0,
         "top_areas": top_areas,
+        "unknown_location": _unknown_location(db, last30),
         "last_14_days": last_14_days,
         "signups": _signups(db, today),
         "note": f"Areas under {AREA_MIN_REPORTED} reports are shown as 'fewer than {AREA_MIN_REPORTED}'.",

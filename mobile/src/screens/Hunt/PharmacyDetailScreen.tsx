@@ -9,7 +9,10 @@ import { TOK } from '../../theme/tokens';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Status } from '../../components/Status';
-import { listPharmacies, Pharmacy, deletePharmacy, toggleVault, updatePharmacy } from '../../api/pharmacies';
+import {
+  listPharmacies, Pharmacy, deletePharmacy, toggleVault, updatePharmacy,
+  UNVERIFIED_LOCATION_TITLE, UNVERIFIED_LOCATION_MESSAGE,
+} from '../../api/pharmacies';
 import { listCallLogs, CallLog } from '../../api/calls';
 import { HuntStackParamList } from '../../navigation/AppNavigator';
 
@@ -26,7 +29,7 @@ const STATUS_MAP: Record<string, { kind: string; label: string }> = {
 export function PharmacyDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const { pharmacyId } = route.params;
+  const { pharmacyId, editAddress: openEditor } = route.params;
 
   const [pharmacy, setPharmacy] = useState<Pharmacy | null>(null);
   const [calls, setCalls] = useState<CallLog[]>([]);
@@ -46,8 +49,16 @@ export function PharmacyDetailScreen() {
         listPharmacies({}),
         listCallLogs(pharmacyId),
       ]);
-      setPharmacy(pharms.find(p => p.id === pharmacyId) ?? null);
+      const found = pharms.find(p => p.id === pharmacyId) ?? null;
+      setPharmacy(found);
       setCalls(logs);
+      if (openEditor && found) {
+        // Arrived from "Edit address" after a manual add we couldn't locate.
+        setEditName(found.name);
+        setEditPhone(found.phone);
+        setEditAddress(found.address ?? '');
+        setEditing(true);
+      }
     } catch { /* silent */ }
   };
 
@@ -99,6 +110,13 @@ export function PharmacyDetailScreen() {
       });
       setPharmacy(updated);
       setEditing(false);
+      if (updated.geocode_status === 'failed') {
+        Alert.alert(UNVERIFIED_LOCATION_TITLE, UNVERIFIED_LOCATION_MESSAGE, [
+          { text: 'Search nearby', onPress: () => navigation.navigate('AddPharmacy') },
+          { text: 'Edit address', onPress: () => setEditing(true) },
+          { text: 'Keep anyway', style: 'cancel' },
+        ]);
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -157,7 +175,7 @@ export function PharmacyDetailScreen() {
             <Text style={styles.fieldLabel}>Phone</Text>
             <TextInput style={styles.input} value={editPhone} onChangeText={setEditPhone} placeholder="Phone number" placeholderTextColor={TOK.textDim} keyboardType="phone-pad" />
             <Text style={styles.fieldLabel}>Address</Text>
-            <TextInput style={styles.input} value={editAddress} onChangeText={setEditAddress} placeholder="Address (optional)" placeholderTextColor={TOK.textDim} />
+            <TextInput style={styles.input} value={editAddress} onChangeText={setEditAddress} placeholder="123 Main St, City, ST 12345" placeholderTextColor={TOK.textDim} autoComplete="street-address" textContentType="fullStreetAddress" />
             <View style={styles.editActions}>
               <Button variant="outline" size="sm" full={false} style={styles.actionBtn} onPress={() => setEditing(false)} disabled={saving}>
                 Cancel
@@ -172,6 +190,15 @@ export function PharmacyDetailScreen() {
             <Text style={styles.name}>{pharmacy.name}</Text>
             <Text style={styles.phone}>{pharmacy.phone}</Text>
             {pharmacy.address && <Text style={styles.address}>{pharmacy.address}</Text>}
+            {pharmacy.location_unverified && (
+              <TouchableOpacity
+                onPress={startEditing}
+                accessibilityRole="button"
+                accessibilityLabel="Location not confirmed. Edit address"
+              >
+                <Text style={styles.unverified}>Location not confirmed · reports stay off the map. <Text style={styles.unverifiedLink}>Edit address</Text></Text>
+              </TouchableOpacity>
+            )}
             {status && <Status kind={status.kind} label={status.label} style={{ marginTop: 8, marginBottom: 16 }} />}
           </>
         )}
@@ -289,6 +316,8 @@ const styles = StyleSheet.create({
   name: { fontSize: 26, fontWeight: '700', color: TOK.text, letterSpacing: -0.4, marginBottom: 4 },
   phone: { fontSize: 14, color: TOK.textMuted },
   address: { fontSize: 12, color: TOK.textDim, marginTop: 2 },
+  unverified: { fontSize: 12, color: TOK.textMuted, marginTop: 6 },
+  unverifiedLink: { color: TOK.primary, fontWeight: '600' },
   actions: { flexDirection: 'row', gap: 8, marginTop: 16, marginBottom: 8 },
   actionBtn: { flex: 1 },
   logResultBtn: { marginBottom: 20 },
