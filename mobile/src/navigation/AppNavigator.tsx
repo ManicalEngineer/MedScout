@@ -36,7 +36,7 @@ export type HuntStackParamList = {
     medicationName?: string; strength?: string;
   };
   AddPharmacy: undefined;
-  PharmacyDetail: { pharmacyId: number };
+  PharmacyDetail: { pharmacyId: number; editAddress?: boolean };
 };
 
 export type TabParamList = {

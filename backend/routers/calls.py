@@ -74,6 +74,9 @@ def _maybe_contribute(call: CallLog, pharmacy: Pharmacy, db: Session, user: User
         # A report without a medication can never match a community query — skip it
         # rather than reward the contributor tier for unusable data.
         return None, None
+    # An unverified pharmacy (address not geocoded) has no ZIP or coordinates,
+    # and neither does its report: it still counts for the contributor and in
+    # the "" (unknown location) tally, but stays off the map and area totals.
     report = AvailabilityReport(
         pharmacy_name=pharmacy.name,
         pharmacy_address=pharmacy.address,

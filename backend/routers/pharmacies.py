@@ -51,10 +51,16 @@ class PharmacyUpdate(BaseModel):
 
 
 def _geocode_address(address: str) -> Optional[dict]:
-    """Best-effort geocode via Google — returns None on any failure so a bad
-    address never blocks saving the pharmacy, just leaves it unplottable."""
+    """Geocode a street address via Google. Returns {latitude, longitude,
+    zip_code} only for a confident match (status OK, not a partial match, with
+    a postal code); otherwise None, so the pharmacy still saves but is left
+    location-unverified. Every failure is logged with Google's status, never
+    with the address (user-linked location data) or the key."""
     api_key = os.getenv("GOOGLE_PLACES_API_KEY", "")
-    if not api_key or not address:
+    if not address or not address.strip():
+        return None
+    if not api_key:
+        logger.error("geocode skipped: GOOGLE_PLACES_API_KEY is not set")
         return None
     try:
         resp = httpx.get(
@@ -63,21 +69,49 @@ def _geocode_address(address: str) -> Optional[dict]:
             timeout=10,
         )
         resp.raise_for_status()
-        results = resp.json().get("results", [])
-        if not results:
-            return None
-        result = results[0]
-        loc = result.get("geometry", {}).get("location", {})
-        zip_code = None
-        for component in result.get("address_components", []):
-            if "postal_code" in component.get("types", []):
-                zip_code = component["short_name"]
-                break
-        if loc.get("lat") is None or loc.get("lng") is None:
-            return None
-        return {"latitude": loc["lat"], "longitude": loc["lng"], "zip_code": zip_code}
-    except httpx.HTTPError:
+        body = resp.json()
+    except httpx.TimeoutException:
+        logger.warning("geocode failed status=TIMEOUT")
         return None
+    except httpx.HTTPStatusError as e:
+        logger.warning("geocode failed status=HTTP_%s", e.response.status_code)
+        return None
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning("geocode failed status=%s", type(e).__name__)
+        return None
+
+    status = body.get("status", "UNKNOWN")
+    if status != "OK":
+        # ZERO_RESULTS is a bad address; anything else (REQUEST_DENIED,
+        # OVER_QUERY_LIMIT, INVALID_REQUEST, ...) is our problem, not the user's.
+        level = logging.INFO if status == "ZERO_RESULTS" else logging.ERROR
+        logger.log(level, "geocode failed status=%s error=%s", status, body.get("error_message", ""))
+        return None
+    results = body.get("results") or []
+    if not results:
+        logger.info("geocode failed status=OK_NO_RESULTS")
+        return None
+    result = results[0]
+    if result.get("partial_match"):
+        logger.info("geocode rejected status=PARTIAL_MATCH")
+        return None
+    loc = result.get("geometry", {}).get("location", {})
+    zip_code = None
+    for component in result.get("address_components", []):
+        if "postal_code" in component.get("types", []):
+            zip_code = component.get("short_name")
+            break
+    if loc.get("lat") is None or loc.get("lng") is None or not zip_code:
+        logger.info("geocode rejected status=INCOMPLETE_RESULT")
+        return None
+    return {"latitude": loc["lat"], "longitude": loc["lng"], "zip_code": zip_code}
+
+
+def _location_unverified(p: Pharmacy) -> bool:
+    """A pharmacy whose location we couldn't confirm. Its call reports are still
+    recorded, but carry no ZIP or coordinates, so they stay off the map and out
+    of named-area totals."""
+    return p.latitude is None or p.longitude is None or not p.zip_code
 
 
 def _haversine_km(lat1, lon1, lat2, lon2) -> float:
@@ -215,6 +249,7 @@ def _pharmacy_response(
         "latitude": p.latitude,
         "longitude": p.longitude,
         "zip_code": p.zip_code,
+        "location_unverified": _location_unverified(p),
         "is_vaulted": p.is_vaulted,
         "sort_order": p.sort_order,
         "last_call_status": last.status.value if last else None,
@@ -282,20 +317,31 @@ def create_pharmacy(
 ):
     data = body.model_dump()
     user_id = current_user.id
-    if data.get("address") and (data.get("latitude") is None or data.get("longitude") is None):
-        release_connection(db)  # don't hold a DB connection across the Google call
-        geocoded = _geocode_address(data["address"])
-        if geocoded:
-            data["latitude"] = geocoded["latitude"]
-            data["longitude"] = geocoded["longitude"]
-            if not data.get("zip_code"):
-                data["zip_code"] = geocoded["zip_code"]
+    if data.get("address") is not None:
+        data["address"] = data["address"].strip() or None
+    geocode_status = "provided"
+    if data.get("latitude") is None or data.get("longitude") is None:
+        if not data.get("address"):
+            geocode_status = "no_address"
+        else:
+            release_connection(db)  # don't hold a DB connection across the Google call
+            geocoded = _geocode_address(data["address"])
+            if geocoded:
+                geocode_status = "ok"
+                data["latitude"] = geocoded["latitude"]
+                data["longitude"] = geocoded["longitude"]
+                if not data.get("zip_code"):
+                    data["zip_code"] = geocoded["zip_code"]
+            else:
+                # Never a 422: the user can still call this pharmacy. The app
+                # offers "Search nearby" / "Edit address" from location_unverified.
+                geocode_status = "failed"
     pharmacy = Pharmacy(**data, user_id=user_id)
     db.add(pharmacy)
     db.commit()
     db.refresh(pharmacy)
     empty_community = {"community_fill_rate": None, "community_report_count": 0, "weekly_fill_rates": [], "last_report_at": None, "reliability_score": 0.0, "insight": None}
-    return _pharmacy_response(pharmacy, empty_community)
+    return {**_pharmacy_response(pharmacy, empty_community), "geocode_status": geocode_status}
 
 
 # Google Places lookups for /nearby are coalesced by a coarse grid cell:
@@ -571,20 +617,24 @@ def update_pharmacy(
     updates = body.model_dump(exclude_none=True)
     address_changed = "address" in updates and updates["address"] != pharmacy.address
     needs_coords = pharmacy.latitude is None or pharmacy.longitude is None
+    geocode_status = None  # None: no geocode attempted on this update
     if updates.get("address") and (address_changed or needs_coords) and "latitude" not in updates and "longitude" not in updates:
         release_connection(db)  # no pending writes yet; setattr below reloads the row
         geocoded = _geocode_address(updates["address"])
         if geocoded:
+            geocode_status = "ok"
             updates["latitude"] = geocoded["latitude"]
             updates["longitude"] = geocoded["longitude"]
             if "zip_code" not in updates:
                 updates["zip_code"] = geocoded["zip_code"]
+        else:
+            geocode_status = "failed"
     for field, value in updates.items():
         setattr(pharmacy, field, value)
     db.commit()
     db.refresh(pharmacy)
     empty_community = {"community_fill_rate": None, "community_report_count": 0, "weekly_fill_rates": [], "last_report_at": None, "reliability_score": 0.0, "insight": None}
-    return _pharmacy_response(pharmacy, empty_community)
+    return {**_pharmacy_response(pharmacy, empty_community), "geocode_status": geocode_status}
 
 
 @router.delete("/{pharmacy_id}", status_code=204)

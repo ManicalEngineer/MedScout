@@ -321,6 +321,34 @@ def remove_from_area_tally(db: Session, report: AvailabilityReport) -> None:
         row.count -= 1
 
 
+def move_area_tally(db: Session, report: AvailabilityReport, new_zip: str) -> Optional[str]:
+    """Move one count for this report from its no-ZIP ("") bucket to new_zip's
+    bucket, same day and channel. For repairing reports whose ZIP was filled in
+    after the fact. Returns the channel moved, or None if nothing was moved (the
+    report was hidden, so it no longer counts, or no "" bucket has a count for
+    its day). Does not commit."""
+    if report.reported_at is None or report.hidden_at is not None:
+        return None
+    day = _utc_day(report.reported_at)
+    row = (
+        db.query(ReportStatsDaily)
+        .filter(
+            ReportStatsDaily.day == day,
+            ReportStatsDaily.zip_code == "",
+            ReportStatsDaily.count > 0,
+        )
+        .order_by(ReportStatsDaily.channel)
+        .with_for_update()
+        .first()
+    )
+    if not row:
+        return None
+    row.count -= 1
+    db.flush()
+    _bump_area_tally(db, day, row.channel, new_zip, 1)
+    return row.channel
+
+
 def area_counts(db: Session, area: Area, days: Optional[int] = None) -> int:
     """Total community reports in `area`, over the last `days` UTC days (today
     included), or all time when days is None."""
